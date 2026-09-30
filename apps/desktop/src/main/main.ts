@@ -1,5 +1,6 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, screen, Tray } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, Tray } from 'electron';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Source } from '@contextpilot/core';
 import { launchClaudeDesktop, ClaudeDesktopAdapter, type AdapterReport } from '../cdp/claudeDesktop.js';
@@ -167,8 +168,8 @@ function openDashboard(sessionId?: string): void {
     dashboard = new BrowserWindow({
       width: 1180,
       height: 800,
-      minWidth: 720,
-      minHeight: 520,
+      minWidth: 420,
+      minHeight: 480,
       title: 'ContextPilot · Dashboard',
       backgroundColor: '#fcfcfb',
       autoHideMenuBar: true,
@@ -290,6 +291,15 @@ function refreshPlanUsage(): void {
 }
 
 async function main(): Promise<void> {
+  if (SMOKE) {
+    // CP-059: el smoke usa su propio userData (no choca con la instancia real abierta) y admite
+    // tema/tamaño forzados para las capturas (light/dark, 1280×800 y ventana angosta).
+    const ud = join(tmpdir(), `contextpilot-smoke-${process.pid}`);
+    mkdirSync(ud, { recursive: true });
+    app.setPath('userData', ud);
+    const theme = process.env.CONTEXTPILOT_SMOKE_THEME;
+    if (theme === 'dark' || theme === 'light') nativeTheme.themeSource = theme;
+  }
   if (!SMOKE && !app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -322,12 +332,19 @@ async function main(): Promise<void> {
   if (SMOKE) await smoke();
 }
 
-/** --smoke: crea tray, overlay y dashboard, espera que carguen, imprime SMOKE_OK y sale. */
+/**
+ * --smoke: crea tray, overlay y dashboard, espera que carguen, imprime SMOKE_OK y sale.
+ * --smoke-shot=<dir> captura overlay.png y dashboard.png; con CONTEXTPILOT_SMOKE_TABS (lista:
+ * live, sessions, sessions-detail, stats, settings, settings-info, team) captura
+ * `<prefijo>dashboard-<pestaña>.png` por cada una. CONTEXTPILOT_SMOKE_SIZE=1280x800 fija el tamaño
+ * del contenido; CONTEXTPILOT_SMOKE_PREFIX antepone un prefijo a los archivos.
+ */
 async function smoke(): Promise<void> {
+  const tabs = (process.env.CONTEXTPILOT_SMOKE_TABS ?? '').split(',').map((t) => t.trim()).filter(Boolean);
   const fail = setTimeout(() => {
     console.log('SMOKE_FAIL timeout');
     app.exit(1);
-  }, 15_000);
+  }, 20_000 + tabs.length * 5_000);
   const loaded = (w: BrowserWindow) =>
     new Promise<void>((res, rej) => {
       if (!w.webContents.isLoading()) return res();
@@ -348,9 +365,32 @@ async function smoke(): Promise<void> {
     const shotArg = process.argv.find((x) => x.startsWith('--smoke-shot='));
     if (shotArg) {
       const dir = shotArg.slice('--smoke-shot='.length);
+      const prefix = process.env.CONTEXTPILOT_SMOKE_PREFIX ?? '';
+      const size = /^(\d+)x(\d+)$/.exec(process.env.CONTEXTPILOT_SMOKE_SIZE ?? '');
+      if (size) dashboard!.setContentSize(Number(size[1]), Number(size[2]));
       await new Promise((r) => setTimeout(r, 1500));
-      writeFileSync(join(dir, 'overlay.png'), (await overlay!.webContents.capturePage()).toPNG());
-      writeFileSync(join(dir, 'dashboard.png'), (await dashboard!.webContents.capturePage()).toPNG());
+      writeFileSync(join(dir, `${prefix}overlay.png`), (await overlay!.webContents.capturePage()).toPNG());
+      writeFileSync(join(dir, `${prefix}dashboard.png`), (await dashboard!.webContents.capturePage()).toPNG());
+      const js: Record<string, string> = {
+        // CONTEXTPILOT_SMOKE_PICK: texto de la fila a abrir (default: la primera).
+        'sessions-detail': `document.querySelector('[data-tab=sessions]').click(); setTimeout(() => { const rows = [...document.querySelectorAll('tbody tr.click')]; (rows.find((r) => r.textContent.includes(${JSON.stringify(process.env.CONTEXTPILOT_SMOKE_PICK ?? '')})) ?? rows[0])?.click(); }, 900);`,
+        'settings-info': `document.querySelector('[data-tab=settings]').click(); setTimeout(() => document.querySelector('.info-btn')?.focus(), 900);`,
+      };
+      for (const t of tabs) {
+        const full = t.endsWith('-full');
+        const tab = full ? t.slice(0, -'-full'.length) : t;
+        await dashboard!.webContents.executeJavaScript(js[tab] ?? `document.querySelector('[data-tab=${JSON.stringify(tab)}]')?.click();`);
+        await new Promise((r) => setTimeout(r, 2200));
+        const [w0, h0] = dashboard!.getContentSize() as [number, number];
+        if (full) {
+          // Página entera: alto del contenido (tope 4000 px) para ver todas las tarjetas.
+          const hFull = await dashboard!.webContents.executeJavaScript(`document.getElementById('main').scrollHeight + document.querySelector('.tabs').offsetHeight + 4`);
+          dashboard!.setContentSize(w0, Math.min(4000, Math.max(h0, Number(hFull) || h0)));
+          await new Promise((r) => setTimeout(r, 900));
+        }
+        writeFileSync(join(dir, `${prefix}dashboard-${t}.png`), (await dashboard!.webContents.capturePage()).toPNG());
+        if (full) dashboard!.setContentSize(w0, h0);
+      }
     }
     clearTimeout(fail);
     console.log(`SMOKE_OK tray=${!!tray} overlay=${overlay!.isVisible()} dashboard=${!!dashboard} connection=${state.connection}`);

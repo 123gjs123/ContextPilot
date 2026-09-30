@@ -74,6 +74,18 @@ export interface TurnEvent {
   sidechain?: boolean;
   /** Extensión (DECISIONS «ventanas»): de dónde sale contextWindow. */
   windowSource?: WindowSource;
+  /**
+   * Extensión (CP-061, DECISIONS «nombres de sesión»): nombre base de la carpeta de trabajo
+   * (Claude Code `cwd`, Codex `session_meta.cwd`). Se guarda en el estado de la sesión.
+   */
+  project?: string;
+  /**
+   * Extensión (CP-061): título de la conversación (Claude Code `ai-title`, título de la página en
+   * web). Contenido del usuario: el pipeline lo guarda sólo en memoria, nunca en cp.db.
+   */
+  title?: string;
+  /** Extensión (CP-064, R4): palabras con contenido del prompt (sin stopwords, > 2 letras). */
+  promptContentWords?: number;
 }
 
 /**
@@ -158,6 +170,13 @@ export interface SessionState {
   /** Extensión (D-14): llamada en que cambió el modelo por última vez y modelo anterior. */
   modelChangedAtCall?: number;
   modelBefore?: string;
+  /** Extensión (CP-061): nombre base de la carpeta de trabajo (persistido; nunca en el export de equipo). */
+  project?: string;
+  /**
+   * Extensión (CP-064, R4): embeddings de los últimos 3 prompts (redondeados a 1e-4). R4 exige que el
+   * prompt nuevo sea distinto del centroide Y de cada uno de estos.
+   */
+  recentPrompts?: number[][];
 }
 
 export interface RuleThresholds {

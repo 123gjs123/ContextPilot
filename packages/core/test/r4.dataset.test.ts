@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { R4, R4_COSINE, applyEvent, embed, estimateTokens, redact, type SessionState, type TurnEvent } from '../src/index.js';
+import { R4, R4_COSINE, applyEvent, contentWordCount, embed, estimateTokens, redact, type SessionState, type TurnEvent } from '../src/index.js';
 import { ev, fixture } from './helpers.js';
 
 // CP-019.2 / D-6: precisión de R4 sobre 100 casos etiquetados (fixtures/r4/cases.json), evaluando la
@@ -17,6 +17,8 @@ const promptEv = (text: string): TurnEvent =>
     phase: 'prompt',
     promptEmbedding: embed(redact(text)),
     promptTokens: estimateTokens(text),
+    // CP-064: la regla completa (incluye el filtro de preguntas cortas y los últimos 3 prompts).
+    promptContentWords: contentWordCount(text),
     tokens: { input: 0, output: 0, estimated: false },
     contextSize: 0,
   });
@@ -55,7 +57,7 @@ describe('R4 sobre el dataset etiquetado (criterio de fase 2)', () => {
 
   it(`precisión > 80 % con el umbral por defecto (coseno < ${R4_COSINE})`, () => {
     const r = evaluate(R4_COSINE);
-    // Se imprime para el informe (docs/reports/fixes-1.md).
+    // Se imprime para el informe (docs/reports/fixes-1.md; CP-064: docs/reports/ui-live.md).
     console.log(`R4 @${R4_COSINE}: precisión ${(r.precision * 100).toFixed(1)} % (${r.tp}/${r.tp + r.fp}), recall ${(r.recall * 100).toFixed(1)} %`);
     expect(r.precision).toBeGreaterThan(0.8);
     expect(r.recall).toBeGreaterThan(0.5);

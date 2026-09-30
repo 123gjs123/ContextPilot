@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import {
   applyEvent,
   cacheRatio,
+  cleanTitle,
   contextWindowFor,
   isAccountSessionId,
   planWindows,
@@ -12,6 +13,7 @@ import {
   ulid,
   type Feedback,
   type Provider,
+  type SessionMeta,
   type SessionState,
   type SessionView,
   type Source,
@@ -47,6 +49,11 @@ export interface PipelineHooks {
   planUsage?: (provider: string) => UsageWindow | undefined;
   /** D-2: foco de `/compact` calculado en memoria desde el transcript (nunca se persiste). */
   focusFor?: (sessionId: string) => string | undefined;
+  /**
+   * CP-061: proyecto y título desde el parser en memoria del transcript (Claude Code `ai-title`,
+   * Codex `cwd`). El título nunca se persiste (DECISIONS «nombres de sesión»).
+   */
+  metaFor?: (sessionId: string) => SessionMeta | undefined;
 }
 
 export type ClearedReason = Feedback | 'expired';
@@ -78,6 +85,8 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
   private r2Fired = new Map<string, string>();
   /** D-2: versión decorada (con foco) de sugerencias publicadas; sólo memoria. */
   private decorated = new Map<string, Suggestion>();
+  /** CP-061: títulos de conversación que llegan en los eventos (web/desktop); sólo memoria. */
+  private titles = new Map<string, string>();
   private attachments: AttachmentIndex;
   private disposed = false;
   private hooks: PipelineHooks;
@@ -115,18 +124,34 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     return s;
   }
 
+  /** CP-061: metadatos en memoria (título, proyecto si el estado todavía no lo tiene). */
+  metaFor(sessionId: string): SessionMeta {
+    let hook: SessionMeta | undefined;
+    try {
+      hook = this.hooks.metaFor?.(sessionId);
+    } catch {
+      hook = undefined;
+    }
+    return { project: hook?.project, title: hook?.title ?? this.titles.get(sessionId) };
+  }
+
+  /** Vista de la sesión con nombre legible (CP-061). */
+  view(s: SessionState, now = Date.now()): SessionView {
+    return toView(s, now, this.metaFor(s.sessionId));
+  }
+
   activeViews(now = Date.now()): SessionView[] {
     return [...this.sessions.values()]
       .filter((s) => now - (Date.parse(s.lastTurnAt) || 0) < ACTIVE_MS)
       .sort((a, b) => Date.parse(b.lastTurnAt) - Date.parse(a.lastTurnAt))
-      .map((s) => toView(s));
+      .map((s) => this.view(s, now));
   }
 
   allViews(): SessionView[] {
     const seen = new Map<string, SessionState>();
     for (const s of this.storage.listSessions()) seen.set(s.sessionId, s);
     for (const s of this.sessions.values()) seen.set(s.sessionId, s);
-    return [...seen.values()].sort((a, b) => Date.parse(b.lastTurnAt) - Date.parse(a.lastTurnAt)).map((s) => toView(s));
+    return [...seen.values()].sort((a, b) => Date.parse(b.lastTurnAt) - Date.parse(a.lastTurnAt)).map((s) => this.view(s));
   }
 
   visibleFor(sessionId: string, now = Date.now()): Suggestion | undefined {
@@ -168,6 +193,9 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
       if (raw.content && cfg.storeContent[e.source]) {
         this.storage.insertContent(e.sessionId, e.source, e.phase === 'prompt' ? 'user' : 'turn', redact(raw.content), Date.parse(e.ts));
       }
+      // CP-061: el título (contenido del usuario) queda sólo en memoria; no entra al estado persistido.
+      const title = cleanTitle(e.title);
+      if (title) this.titles.set(e.sessionId, title);
       const prev = this.getSession(e.sessionId);
       const state = applyEvent(prev, e);
       this.sessions.set(e.sessionId, state);
@@ -198,7 +226,7 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     for (const id of touched) {
       const s = this.sessions.get(id)!;
       this.storage.saveSession(s);
-      this.emit('session', toView(s));
+      this.emit('session', this.view(s));
       this.scheduleR2(s);
     }
     return { accepted, suggestions: published };

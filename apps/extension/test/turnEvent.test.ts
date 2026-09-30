@@ -1,6 +1,6 @@
 import { contextWindowFor, estimateTokens, validateTurnEvent } from '@contextpilot/core';
 import { describe, expect, it } from 'vitest';
-import { buildTurnEvent, promptHashOf } from '../src/turnEvent.js';
+import { buildTurnEvent, promptHashOf, titleFromDocument } from '../src/turnEvent.js';
 
 const base = {
   site: 'claude.ai' as const,
@@ -84,5 +84,21 @@ describe('buildTurnEvent', () => {
       const r = validateTurnEvent(JSON.parse(JSON.stringify(ev)));
       expect(r.ok, JSON.stringify(r)).toBe(true);
     }
+  });
+});
+
+describe('CP-061: título de la conversación y palabras con contenido', () => {
+  it('título de la pestaña sin el nombre del sitio; genéricos → undefined', () => {
+    expect(titleFromDocument('Plan de pruebas de regresión - Claude')).toBe('Plan de pruebas de regresión');
+    expect(titleFromDocument('Resumen de incidentes | ChatGPT')).toBe('Resumen de incidentes');
+    expect(titleFromDocument('ChatGPT')).toBeUndefined();
+    expect(titleFromDocument('Google Gemini')).toBeUndefined();
+    expect(titleFromDocument(undefined)).toBeUndefined();
+  });
+  it('buildTurnEvent lleva title (válido) y promptContentWords', () => {
+    const ev = buildTurnEvent({ ...base, title: 'Plan de pruebas', promptText: 'que es esto? necesito una app con un monitor' });
+    expect(ev.title).toBe('Plan de pruebas');
+    expect(ev.promptContentWords).toBe(2);
+    expect(validateTurnEvent(ev).ok).toBe(true);
   });
 });

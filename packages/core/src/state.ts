@@ -1,4 +1,5 @@
 import { updateCentroid } from './embed.js';
+import { sessionDisplayName } from './names.js';
 import { effectiveTokens, pushBurnSample, rawTokens, sessionBurn, type Burn } from './projection.js';
 import type { SessionState, TurnEvent } from './types.js';
 
@@ -7,6 +8,8 @@ import type { SessionState, TurnEvent } from './types.js';
 export const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 const MAX_RECENT_TOOL_CALLS = 20;
 const MAX_CACHE_RATIOS = 20;
+/** CP-064 (R4): prompts recientes contra los que se compara el prompt nuevo. */
+export const RECENT_PROMPTS = 3;
 
 export function promptTotal(e: Pick<TurnEvent, 'tokens'>): number {
   const t = e.tokens;
@@ -73,6 +76,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
   }
   if (e.contextWindow) s.contextWindow = e.contextWindow;
   if (e.cacheTtlMs) s.cacheTtlMs = e.cacheTtlMs;
+  if (e.project) s.project = e.project;
   if (e.toolsAvailable?.length) s.toolsAvailable = e.toolsAvailable;
 
   const phase = e.phase ?? 'response';
@@ -80,10 +84,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
 
   if (phase === 'prompt') {
     if (e.promptTokens !== undefined) s.lastPromptTokens = e.promptTokens;
-    if (e.promptEmbedding && (e.promptTokens ?? 99) >= 20) {
-      s.centroid = updateCentroid(s.centroid, s.centroidN, e.promptEmbedding);
-      s.centroidN += 1;
-    }
+    if (e.promptEmbedding && (e.promptTokens ?? 99) >= 20) notePrompt(s, e.promptEmbedding);
     for (const b of e.blocks ?? []) {
       const c = (s.blockCounts[b.hash] ??= { count: 0, tokens: b.tokens });
       c.count += 1;
@@ -124,10 +125,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
 
   // Web: prompt y adjuntos llegan con la respuesta cuando no hubo evento 'prompt'.
   if (prev?.lastPhase !== 'prompt') {
-    if (e.promptEmbedding && (e.promptTokens ?? 99) >= 20) {
-      s.centroid = updateCentroid(s.centroid, s.centroidN, e.promptEmbedding);
-      s.centroidN += 1;
-    }
+    if (e.promptEmbedding && (e.promptTokens ?? 99) >= 20) notePrompt(s, e.promptEmbedding);
     for (const b of e.blocks ?? []) {
       const c = (s.blockCounts[b.hash] ??= { count: 0, tokens: b.tokens });
       c.count += 1;
@@ -135,6 +133,15 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
     for (const a of e.attachments ?? []) s.attachmentCounts[a.hash] = (s.attachmentCounts[a.hash] ?? 0) + 1;
   }
   return s;
+}
+
+/** R4: centroide + últimos RECENT_PROMPTS embeddings (redondeados: el estado se persiste). */
+function notePrompt(s: SessionState, v: number[]): void {
+  s.centroid = updateCentroid(s.centroid, s.centroidN, v);
+  s.centroidN += 1;
+  const recent = (s.recentPrompts ??= []);
+  recent.push(v.map((x) => Math.round(x * 1e4) / 1e4));
+  if (recent.length > RECENT_PROMPTS) recent.splice(0, recent.length - RECENT_PROMPTS);
 }
 
 /**
@@ -145,6 +152,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
 function applySidechain(prev: SessionState | undefined, e: TurnEvent): SessionState {
   const s: SessionState = structuredClone(prev ?? { ...newSession(e), contextWindow: 0 });
   s.status = 'active';
+  if (e.project && !s.project) s.project = e.project;
   if (!prev || Date.parse(e.ts) > Date.parse(s.lastTurnAt)) s.lastTurnAt = e.ts;
   s.totals.input += e.tokens.input;
   s.totals.output += e.tokens.output;
@@ -181,14 +189,29 @@ export interface SessionView {
   windowSource?: SessionState['windowSource'];
   /** D-5 (CP-018.1): ritmo de la sesión, media móvil de 15 min. */
   burn?: Burn;
+  /** CP-061: carpeta de trabajo (nombre base) y título de la conversación (sólo memoria). */
+  project?: string;
+  title?: string;
+  /** CP-061: «proyecto — título» (o lo que haya); el id corto va aparte como texto secundario. */
+  displayName?: string;
+  /** CP-060 (coaching): TTL de caché observado (ms), para la cuenta regresiva «caché expira en…». */
+  cacheTtlMs?: number;
+}
+
+/** Metadatos de sesión que viven sólo en memoria del daemon (CP-061). */
+export interface SessionMeta {
+  project?: string;
+  title?: string;
 }
 
 function phaseOf(e: TurnEvent): 'prompt' | 'response' {
   return e.phase ?? 'response';
 }
 
-export function toView(s: SessionState, now = Date.now()): SessionView {
+export function toView(s: SessionState, now = Date.now(), meta: SessionMeta = {}): SessionView {
   const last = s.cacheRatios.at(-1);
+  const project = s.project ?? meta.project;
+  const title = meta.title;
   return {
     sessionId: s.sessionId,
     source: s.source,
@@ -205,5 +228,9 @@ export function toView(s: SessionState, now = Date.now()): SessionView {
     status: s.status,
     windowSource: s.windowSource,
     burn: sessionBurn(s, now),
+    cacheTtlMs: s.cacheTtlMs,
+    ...(project ? { project } : {}),
+    ...(title ? { title } : {}),
+    displayName: sessionDisplayName({ sessionId: s.sessionId, source: s.source, client: s.client, project, title }),
   };
 }

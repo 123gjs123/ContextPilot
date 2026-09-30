@@ -18,14 +18,24 @@ function add(v: number[], i: number, w: number): void {
   v[i] = (v[i] ?? 0) + w;
 }
 
-export function embed(text: string): number[] {
-  const v = new Array<number>(EMBED_DIMS).fill(0);
-  const words = text
+/** Palabras con contenido: minúsculas sin tildes, > 2 letras, sin stopwords (ES/EN). */
+export function contentWords(text: string): string[] {
+  return text
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .split(/[^a-z0-9_]+/)
     .filter((w) => w.length > 2 && !STOP.has(w));
+}
+
+/** CP-064 (R4): cantidad de palabras con contenido (las preguntas cortas no son «tarea nueva»). */
+export function contentWordCount(text: string): number {
+  return contentWords(text).length;
+}
+
+export function embed(text: string): number[] {
+  const v = new Array<number>(EMBED_DIMS).fill(0);
+  const words = contentWords(text);
   for (const w of words) {
     add(v, bucket('w:' + w), 2);
     const p = `^${w}$`;

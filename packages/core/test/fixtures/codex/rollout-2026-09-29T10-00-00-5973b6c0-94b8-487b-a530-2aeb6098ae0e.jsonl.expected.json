@@ -18,8 +18,10 @@
     "idleSincePrevMs": 0,
     "promptHash": "1fe59ea1a0af9e",
     "promptTokens": 12,
+    "promptContentWords": 5,
     "phase": "prompt",
-    "blocks": []
+    "blocks": [],
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -41,7 +43,8 @@
     "windowSource": "observed",
     "idleSincePrevMs": 0,
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -71,7 +74,8 @@
       }
     ],
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -101,7 +105,8 @@
       }
     ],
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -130,7 +135,8 @@
       }
     ],
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -151,8 +157,10 @@
     "idleSincePrevMs": 689900,
     "promptHash": "060c69a0535fce",
     "promptTokens": 4,
+    "promptContentWords": 2,
     "phase": "prompt",
-    "blocks": []
+    "blocks": [],
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -174,7 +182,8 @@
     "windowSource": "observed",
     "idleSincePrevMs": 689900,
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -204,7 +213,8 @@
       }
     ],
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -234,7 +244,8 @@
       }
     ],
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   },
   {
     "source": "codex",
@@ -264,6 +275,7 @@
       }
     ],
     "promptHash": "",
-    "phase": "response"
+    "phase": "response",
+    "project": "demo"
   }
 ]

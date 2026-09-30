@@ -4,6 +4,8 @@
 // output = estimación del texto de la respuesta.
 // contextSize = input + output (D «fórmula de ocupación»: lo que viaja en el próximo turno).
 import {
+  cleanTitle,
+  contentWordCount,
   contextWindowFor,
   embed,
   estimateTokens,
@@ -33,6 +35,8 @@ export interface TurnCapture {
   now: number;
   /** Momento del turno anterior de la misma sesión (para idleSincePrevMs). */
   prevTs?: number;
+  /** CP-061: título de la conversación (título de la pestaña sin el nombre del sitio). */
+  title?: string;
   via: 'net' | 'dom';
 }
 
@@ -84,7 +88,12 @@ export function buildTurnEvent(c: TurnCapture): TurnEvent {
     promptTokens,
     phase: 'response',
   };
-  if (safePrompt) ev.promptEmbedding = embed(safePrompt);
+  if (safePrompt) {
+    ev.promptEmbedding = embed(safePrompt);
+    ev.promptContentWords = contentWordCount(safePrompt);
+  }
+  const title = cleanTitle(c.title);
+  if (title) ev.title = title;
   const blocks = safePrompt ? splitBlocks(safePrompt) : [];
   if (blocks.length) ev.blocks = blocks;
   if (c.attachments?.length) ev.attachments = c.attachments;
@@ -92,4 +101,18 @@ export function buildTurnEvent(c: TurnCapture): TurnEvent {
   if (c.regenerated) ev.regenerated = true;
   if (c.expensiveMode) ev.expensiveMode = c.expensiveMode;
   return ev;
+}
+
+/** Títulos genéricos de los sitios (no identifican la conversación). */
+const GENERIC_TITLES = /^(claude|chatgpt|gemini|google gemini|new chat|nuevo chat|nueva conversación)$/i;
+
+/**
+ * CP-061: título de la conversación desde `document.title` («Plan de pruebas - Claude» →
+ * «Plan de pruebas»). undefined si es el título genérico del sitio.
+ */
+export function titleFromDocument(docTitle: string | undefined): string | undefined {
+  if (!docTitle) return undefined;
+  const t = docTitle.replace(/\s+[-–—|]\s+(Claude|ChatGPT|Gemini|Google Gemini)\s*$/i, '').trim();
+  if (!t || GENERIC_TITLES.test(t)) return undefined;
+  return cleanTitle(t);
 }

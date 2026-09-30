@@ -74,3 +74,12 @@ Cliente → servidor: `{ type: 'feedback', data: { id, feedback } }` (equivalent
 - **Replay de arranque (D-19).** Los eventos re-procesados al arrancar sólo reconstruyen estado: no publican sugerencias ni fijan cooldowns (antes podían silenciar R10 ~1 h).
 - **Nivel de modelo (D-14, CP-016.1).** `Config.modelTiers?: Record<string, 'top' | 'mid' | 'small'>`: clave = id exacto o fragmento del id (sin distinguir mayúsculas; gana el más largo). Pisa la tabla de `models.ts` (R7 sólo evalúa modelos `top`). Validado en `PUT /config` (400 con un nivel desconocido).
 - **Health por formato (D-16, CP-027.3 / CP-030.5).** `claude-code` pasa a `status: 'error'` en el acto (no tras 3 líneas) con `detail` `versión de formato desconocida: <v> …` (versión con mayor fuera de 1.x–2.x) o `llamada sin message.id o message.usage con input_tokens/output_tokens numéricos`, y `formatVersion` = la última vista. Esos registros no emiten cifras; vuelve a `ok` con el siguiente lote limpio.
+
+## Extensiones de tipos (ronda 3: UI en vivo, CP-059…CP-065)
+
+Todas aditivas; los clientes viejos las ignoran.
+
+- **`SessionView`**: `project?` (nombre base de la carpeta de trabajo), `title?` (título de la conversación; sólo memoria del daemon, nunca en cp.db), `displayName?` («proyecto — título», o lo que haya; sin datos, el cliente) y `cacheTtlMs?` (TTL de caché observado, para la cuenta regresiva). Valen en `GET /sessions`, `GET /sessions/:id` (`view`), `hello` y `session` por WS. La statusline no cambia.
+- **`TurnEvent`** (entrada de `POST /ingest/events`): `project?: string`, `title?: string` (≤ 500 caracteres; el daemon toma el nombre base / redacta y corta a 80) y `promptContentWords?: number` (entero ≥ 0, palabras con contenido del prompt, para R4). La extensión envía `title` (título de la pestaña sin el nombre del sitio) y `promptContentWords`.
+- **Timeline** (`GET /sessions/:id`): cada punto trae `sidechain?: boolean | null` (llamada de subagente / hilo principal / desconocido en filas anteriores al esquema v2). Esquema de cp.db **v2**: columna `turns.sidechain`.
+- **R4**: umbral nuevo `rules.R4.thresholds.minContentWords` (default 5) y comparación también contra los últimos 3 prompts (`SessionState.recentPrompts`).

@@ -1,4 +1,4 @@
-import type { Config, PlanProfile, Provider, Source } from '@contextpilot/core';
+import { recommendedSettings, type Config, type PlanProfile, type Provider, type Source } from '@contextpilot/core';
 
 // Mapeo Config ↔ formulario de configuración (CP-054 UI, CP-055, CP-056). Puro.
 
@@ -186,4 +186,20 @@ export function looksLikeConfig(v: unknown): v is Partial<Config> {
   const o = v as Record<string, unknown>;
   const cfg = (o.config && typeof o.config === 'object' ? o.config : o) as Record<string, unknown>;
   return 'rules' in cfg || 'adapters' in cfg || 'plans' in cfg;
+}
+
+/** CP-063: «Restaurar recomendado»: umbrales y cooldown por defecto de la regla (no toca «activa»). */
+export function restoreRecommended(r: RuleForm): RuleForm {
+  const rec = recommendedSettings(r.id);
+  if (!rec) return r;
+  return { ...r, cooldownMin: rec.cooldownMin, thresholds: Object.entries(rec.thresholds).map(([key, value]) => ({ key, value })) };
+}
+
+/** CP-063: la regla está en los valores recomendados. */
+export function isRecommended(r: RuleForm): boolean {
+  const rec = recommendedSettings(r.id);
+  if (!rec) return true;
+  if (Math.abs(r.cooldownMin - rec.cooldownMin) > 1e-9) return false;
+  const cur = Object.fromEntries(r.thresholds.map((t) => [t.key, t.value]));
+  return Object.entries(rec.thresholds).every(([k, v]) => cur[k] === v);
 }

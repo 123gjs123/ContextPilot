@@ -198,6 +198,7 @@ Tablas SQLite: `sessions`, `turns`, `tool_calls`, `suggestions`, `embeddings`, `
 | Side panel | `chrome.sidePanel` | Medidor ≈, turnos, historial, ahorro | Detalle, reglas del sitio | 0 |
 | Badge | Ícono extensión | Verde/amarillo/rojo + % | Abre side panel | 0 |
 | Dashboard | App de escritorio | Timeline, ahorro por regla/proveedor, salud | Filtros, CSV | 1 |
+| Dashboard · En vivo (CP-059) | App de escritorio, pestaña por defecto | Una tarjeta por sesión activa: nombre, fuente, modelo, contexto, caché, turnos, ritmo, última actividad, estado por color; «Buena práctica» o consejo; franja de plan 5 h / 7 d y R10 | Acciones de la sugerencia, aceptar/ignorar/posponer | 1 |
 
 Reglas: cifras estimadas con «≈»; medidor verde < 50 %, amarillo 50–75 %, rojo > 75 %; el banner nunca tapa ni envía; adaptador roto → «sin datos».
 

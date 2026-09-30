@@ -1,4 +1,5 @@
-import { embed } from '../embed.js';
+import { contentWordCount, embed } from '../embed.js';
+import { projectFromCwd } from '../names.js';
 import { estimateTokens } from '../estimate.js';
 import { contextWindowInfo } from '../models.js';
 import { redact } from '../redact.js';
@@ -31,6 +32,8 @@ interface SessionCursor {
   lastResponseTs?: number;
   promptTs?: number;
   model: string;
+  /** CP-061 (best-effort): la telemetría no siempre informa la carpeta de trabajo. */
+  project?: string;
 }
 
 const SEEN_MAX = 2000;
@@ -95,6 +98,9 @@ export class GeminiTelemetryParser {
     if (this.seen.size > SEEN_MAX) this.seen.delete(this.seen.values().next().value as string);
 
     const cur = this.cursor(sessionId);
+    // CP-061 (best-effort): carpeta de trabajo si algún atributo la trae.
+    const project = projectFromCwd(str(a.cwd) ?? str(a['process.cwd']) ?? str(a['working_directory']) ?? str(a['workspace.path']));
+    if (project) cur.project = project;
     switch (name) {
       case 'gemini_cli.user_prompt':
         return this.onPrompt(cur, sessionId, a, ts);
@@ -157,7 +163,9 @@ export class GeminiTelemetryParser {
       // Sin logPrompts no hay texto: el hash identifica el prompt por su id.
       promptHash: text ? hash(text) : hash(`prompt_id:${promptId ?? ts}`),
       promptTokens: text ? estimateTokens(text, 'google') : Math.round((num(a.prompt_length) || 0) / 4),
+      ...(text ? { promptContentWords: contentWordCount(redact(text)) } : {}),
       phase: 'prompt',
+      ...(cur.project ? { project: cur.project } : {}),
     };
     if (text && this.opts.embedPrompts !== false) ev.promptEmbedding = embed(redact(text));
     return [ev];
@@ -208,6 +216,7 @@ export class GeminiTelemetryParser {
         toolCalls: toolCalls.length ? toolCalls : undefined,
         promptHash: '',
         phase: 'response',
+        ...(cur.project ? { project: cur.project } : {}),
       },
     ];
   }

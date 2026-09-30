@@ -24,6 +24,8 @@ export interface TimelinePoint {
   cacheRead: number;
   cacheWrite: number;
   estimated: boolean;
+  /** CP-065: llamada de subagente (true), hilo principal (false) o desconocido (null: filas previas). */
+  sidechain?: boolean | null;
 }
 
 export type SuggestionWithFeedback = Suggestion & { feedback?: ClearedReason };
@@ -105,7 +107,9 @@ export type TrayColor = 'green' | 'yellow' | 'red' | 'gray';
 
 export interface SessionRow {
   sessionId: string;
+  /** CP-061: nombre legible («contextpilot — título»); el id corto va en `shortId`. */
   label: string;
+  shortId: string;
   provider: string;
   source: string;
   model: string;
@@ -116,6 +120,8 @@ export interface SessionRow {
   cacheText: string;
   noData: boolean;
   suggestion?: SuggestionRow;
+  /** CP-059: vista completa (turnos, ritmo, última actividad, TTL) para las tarjetas «En vivo». */
+  view: SessionView;
 }
 
 export interface SuggestionRow {
@@ -125,6 +131,7 @@ export interface SuggestionRow {
   title: string;
   detail: string;
   savingText?: string;
+  estimatedSavingTokens?: number;
   actions: { index: number; kind: string; label: string }[];
 }
 

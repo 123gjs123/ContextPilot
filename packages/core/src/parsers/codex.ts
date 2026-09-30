@@ -1,4 +1,5 @@
-import { embed } from '../embed.js';
+import { contentWordCount, embed } from '../embed.js';
+import { projectFromCwd } from '../names.js';
 import { estimateTokens } from '../estimate.js';
 import { contextWindowInfo } from '../models.js';
 import { redact } from '../redact.js';
@@ -53,6 +54,8 @@ export class CodexParser {
   unknown = 0;
   sessionId?: string;
   private client = 'codex';
+  /** CP-061: nombre base de `session_meta.cwd` / `turn_context.cwd`. */
+  project?: string;
   private model = '';
   private turn = 0;
   private toolUses = new Map<string, PendingTool>();
@@ -99,6 +102,7 @@ export class CodexParser {
           return [];
         case 'turn_context':
           if (typeof p.model === 'string') this.model = p.model;
+          if (projectFromCwd(p.cwd)) this.project = projectFromCwd(p.cwd);
           return [];
         case 'event_msg':
           return this.onEventMsg(p, ts);
@@ -138,6 +142,14 @@ export class CodexParser {
     if (typeof m.originator === 'string') this.client = m.originator;
     if (m.cli_version) this.formatVersions.add(String(m.cli_version));
     if (typeof m.model === 'string' && !this.model) this.model = m.model;
+    // CP-061: nombre base de la carpeta de trabajo.
+    const project = projectFromCwd(m.cwd);
+    if (project) this.project = project;
+  }
+
+  /** CP-061: metadatos legibles (Codex no tiene título de conversación). */
+  meta(): { project?: string; title?: string } {
+    return { project: this.project };
   }
 
   private onEventMsg(p: any, ts: number): TurnEvent[] {
@@ -214,8 +226,10 @@ export class CodexParser {
       idleSincePrevMs: this.lastAssistantTs ? Math.max(0, ts - this.lastAssistantTs) : 0,
       promptHash: hash(text),
       promptTokens: estimateTokens(text, 'openai'),
+      promptContentWords: contentWordCount(redact(text)),
       phase: 'prompt',
       blocks: splitBlocks(text),
+      ...(this.project ? { project: this.project } : {}),
     };
     if (this.opts.embedPrompts !== false) ev.promptEmbedding = embed(redact(text));
     return [ev];
@@ -275,6 +289,7 @@ export class CodexParser {
         toolCalls: toolCalls.length ? toolCalls : undefined,
         promptHash: '',
         phase: 'response',
+        ...(this.project ? { project: this.project } : {}),
       },
     ];
   }

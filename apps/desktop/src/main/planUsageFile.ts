@@ -6,6 +6,8 @@ import type { PlanUsageView } from '../shared/types.js';
 // Lectura (sólo lectura) del historial de uso del plan que guarda Claude Desktop (ver spike).
 
 export function planUsagePaths(env: NodeJS.ProcessEnv = process.env): string[] {
+  // Igual que el daemon: archivo explícito (pruebas, capturas con datos sintéticos).
+  if (env.CONTEXTPILOT_PLAN_USAGE_FILE) return existsSync(env.CONTEXTPILOT_PLAN_USAGE_FILE) ? [env.CONTEXTPILOT_PLAN_USAGE_FILE] : [];
   const local = env.LOCALAPPDATA ?? '';
   const out: string[] = [];
   const pk = join(local, 'Packages');

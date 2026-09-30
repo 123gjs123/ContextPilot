@@ -1,4 +1,5 @@
-import { embed } from '../embed.js';
+import { contentWordCount, embed } from '../embed.js';
+import { cleanTitle, projectFromCwd } from '../names.js';
 import { estimateTokens } from '../estimate.js';
 import { contextWindowFor, contextWindowInfo } from '../models.js';
 import { redact } from '../redact.js';
@@ -95,6 +96,10 @@ export class ClaudeCodeParser {
   private inventory: AvailableTool[] = [];
   /** D-2: actividad de los últimos prompts (sólo memoria). */
   private activity: TurnActivity[] = [];
+  /** CP-061: carpeta de trabajo (nombre base del `cwd` de los registros) y último `ai-title`. */
+  project?: string;
+  /** CP-061: título de la conversación (registro `ai-title`). Contenido del usuario: sólo memoria. */
+  title?: string;
 
   constructor(private opts: ClaudeCodeParserOptions = {}) {}
 
@@ -109,6 +114,11 @@ export class ClaudeCodeParser {
     for (const [server, t] of this.mcpInstructions) add(server, t);
     this.inventory = [...by].map(([server, t]) => ({ name: `mcp__${server}`, definitionTokens: Math.round(t), estimated: true }));
     return this.inventory;
+  }
+
+  /** CP-061: metadatos legibles de la sesión (en memoria). */
+  meta(): { project?: string; title?: string } {
+    return { project: this.project, title: this.title };
   }
 
   /**
@@ -200,6 +210,18 @@ export class ClaudeCodeParser {
       }
     }
     if (rec.sessionId) this.sessionId = rec.sessionId;
+    // CP-061: nombre de la carpeta de trabajo y título que Claude Code genera para la conversación.
+    // El cwd de un subagente es el del proyecto: también sirve (así la sesión tiene nombre aunque el
+    // replay lea primero los archivos de subagentes). El título sólo sale del hilo principal.
+    const project = projectFromCwd(rec.cwd);
+    if (project) this.project = project;
+    if (!rec.isSidechain && !this.opts.sidechain) {
+      if (rec.type === 'ai-title') {
+        const title = cleanTitle(rec.aiTitle);
+        if (title) this.title = title;
+        return [];
+      }
+    }
     if (rec.type === 'assistant' && rec.message && rec.message.model !== '<synthetic>' && !validUsage(rec.message)) {
       return this.formatError('llamada sin message.id o message.usage con input_tokens/output_tokens numéricos');
     }
@@ -211,6 +233,11 @@ export class ClaudeCodeParser {
     if (rec.type === 'user') return this.onUser(rec);
     if (rec.type === 'assistant') return this.onAssistant(rec);
     return [];
+  }
+
+  /** CP-061: project/title para el evento (sólo los que se conocen). */
+  private names(): Pick<TurnEvent, 'project' | 'title'> {
+    return { ...(this.project ? { project: this.project } : {}), ...(this.title ? { title: this.title } : {}) };
   }
 
   private formatError(detail: string): TurnEvent[] {
@@ -292,6 +319,7 @@ export class ClaudeCodeParser {
         promptHash: '',
         phase: 'response',
         sidechain: true,
+        ...(this.project ? { project: this.project } : {}),
       },
     ];
   }
@@ -336,8 +364,10 @@ export class ClaudeCodeParser {
       idleSincePrevMs: this.lastAssistantTs ? Math.max(0, ts - this.lastAssistantTs) : 0,
       promptHash: hash(text),
       promptTokens,
+      promptContentWords: contentWordCount(clean),
       phase: 'prompt',
       blocks: splitBlocks(text),
+      ...this.names(),
     };
     if (this.opts.embedPrompts !== false) ev.promptEmbedding = embed(clean);
     return [ev];
@@ -397,6 +427,7 @@ export class ClaudeCodeParser {
         cacheTtlMs: this.cacheTtlMs,
         phase: 'response',
         ...(tools.length ? { toolsAvailable: tools } : {}),
+        ...this.names(),
       },
     ];
   }

@@ -38,6 +38,7 @@ E0 → E1 (CP-004..CP-013) → E2 → E3 → E13(CLI) → E9 → E10 → E7 → 
 | E13 | Traspaso | CP-052 – CP-053 (+ CP-041 web) |
 | E14 | Configuración | CP-054 – CP-056 |
 | E15 | Modo equipo | CP-057 |
+| E16 | UI en vivo y coaching (feedback del lead, primera vista) | CP-059 – CP-065 |
 
 ---
 
@@ -484,3 +485,56 @@ Traza: RF-TEAM-01, RNF-01, criterio fase 3 · Fase 3 · C · partial (falta MANU
 2. Test de fuga: el archivo no contiene ninguna cadena hex ≥ 16 caracteres, ningún ULID/UUID, ninguna ruta, ninguna cadena de los fixtures; buckets con < 5 sesiones se suprimen.
 3. Dado N archivos exportados, el dashboard los importa y muestra el agregado del equipo (sin servidor; D «modo equipo»).
 4. MANUAL: aprobación de seguridad registrada en `docs/DECISIONS.md` antes de marcar `done`.
+
+---
+
+## E16 — UI en vivo y coaching (feedback del QA lead, 2026-09-30)
+
+Origen: primera revisión del monitor por el lead (capturas del dashboard). Informe: [reports/ui-live.md](reports/ui-live.md). Decisiones: filas CP-059…CP-065 de [DECISIONS.md](DECISIONS.md).
+
+### CP-059 · Monitor «En vivo»: una tarjeta por sesión activa
+Traza: SPEC §9, RF-EST-01, RNF-13 · Fase 1 · M · done (falta MANUAL) · MIXTA
+1. Dado el dashboard abierto, entonces la pestaña por defecto es «En vivo» (antes de «Sesiones») y muestra una tarjeta por sesión activa (último turno < 30 min).
+2. Dado un mensaje WS `session`/`suggestion`/`suggestion-cleared`, cuando llega, entonces la tarjeta se crea, actualiza o quita sin refrescar a mano; las existentes conservan su lugar (orden estable, `stableOrder`) y el foco del teclado.
+3. Cada tarjeta muestra nombre (CP-061) + id corto, distintivo de fuente, modelo, medidor de contexto (% de la ventana, «≈» si es estimado), caché %, turnos, ritmo (tokens efectivos/min), última actividad («hace 2 min»).
+4. Estado de la tarjeta = peor entre medidor (verde < 50 %, ámbar 50–75 %, rojo > 75 %) y severidad de la sugerencia vigente (info no alarma); adaptador sin datos → gris «Sin datos». El color del borde/cabecera cambia con transición (test de mapeo `cardState`/`CARD_STATE_COLOR`).
+5. Franja de cuenta arriba: barras de uso del plan 5 h y 7 días (plan-usage) y aviso R10 vigente con sus acciones.
+6. MANUAL: capturas 1/4/9 tarjetas, 1280×800 y angosta, claro y oscuro (`docs/reports/ui-live/`) revisadas por el lead.
+
+### CP-060 · Coaching proactivo por tarjeta
+Traza: SPEC §5, RF-SUG-01 · Fase 1 · M · done · AUTO
+1. Dada una sugerencia vigente, entonces la tarjeta muestra «Buena práctica» con qué pasa (números de la sesión), por qué cuesta (1–2 frases), qué hacer ahora (botones existentes: acciones, aceptar, ignorar, posponer 15 min) y un «Hábito» de una línea.
+2. Sin sugerencia, entonces muestra un consejo contextual: cuenta regresiva «Caché expira en N min» (CLI/proxy, cifras exactas, contexto > 50k; con TTL de 1 h sólo en los últimos 15 min), caché vencida, contexto ≥ 45 % («cuando pase 60 % conviene /compact con foco…»), caché baja, modelo top con contexto chico, o un hábito general; lo urgente gana, el resto rota cada 30 s.
+3. Todo el texto vive en `packages/core/src/coaching.ts` (`coachingFor`, `tipFor`, puros); toda regla del motor tiene copy (test) y los umbrales citados salen de las reglas.
+
+### CP-061 · Nombres de sesión legibles
+Traza: RF-EST-01, RNF-01 · Fase 1 · M · done · AUTO
+1. `SessionView` agrega `project?`, `title?`, `displayName?` (aditivo). Claude Code: `project` = nombre base del `cwd`, `title` = último `ai-title`; Codex: `cwd` de `session_meta`; Gemini: best-effort; web: sitio + título de la pestaña (extensión).
+2. `displayName` = «proyecto — título» (o lo que haya; sin datos, el cliente) en tarjetas, tabla de Sesiones, menú y tooltip del tray, overlay; id corto como texto secundario; la statusline no cambia.
+3. El título nunca se guarda en cp.db (test de fuga sobre el binario exportado); el nombre base de la carpeta sí (DECISIONS). Tras un reinicio el título vuelve desde el parser en memoria (`metaFor`).
+
+### CP-062 · Pestaña Equipo comprensible
+Traza: RF-TEAM-01, RNF-01 · Fase 3 · C · done (falta MANUAL H-3) · MIXTA
+1. Encabezado: qué es, para quién, qué se exporta (agregados semanales por proveedor/regla: sesiones, tokens, sugerencias aceptadas/ignoradas/pospuestas, ahorro estimado) y qué NUNCA (prompts, nombres, títulos, rutas, ids, hashes; grupos < 5 sesiones ocultos).
+2. Vista previa del agregado propio como tarjetas y tablas legibles (`teamExportView`, test) antes de «Guardar archivo…»; si todo queda oculto, lo explica.
+3. Vista de combinación con pasos, etiquetas claras y un archivo de ejemplo; aviso visible «pendiente de aprobación de seguridad (H-3)».
+4. MANUAL: H-3 (sin cambio).
+
+### CP-063 · Ayuda en Configuración
+Traza: RF-CFG-02 · Fase 1 · S · done · AUTO
+1. Cada regla (R1–R10, W1–W4, G1–G2) muestra nombre, qué detecta, por qué importa y qué sugiere, y las fuentes donde se evalúa; umbrales con etiqueta legible.
+2. Ícono ⓘ accesible por teclado (foco/clic abre, Esc cierra, `aria-expanded`, `role=tooltip`) con la configuración recomendada (umbrales y cooldown con el porqué).
+3. «Restaurar recomendado» por regla vuelve umbrales y cooldown a los defaults sin tocar «activa» (`restoreRecommended`, test).
+4. Textos breves de perfiles de plan y adaptadores. Fuente: `packages/core/src/ruleDocs.ts` (valores = `rule.defaults`, test).
+
+### CP-064 · R4 robusto ante preguntas cortas y seguimientos
+Traza: SPEC §5 R4, criterio fase 2 · Fase 2 · M · done · AUTO
+1. Dado un prompt con menos de `minContentWords` (5) palabras con contenido, entonces R4 no dispara (caso del lead como test).
+2. R4 exige similitud < `cosine` con el centroide y con cada uno de los últimos 3 prompts.
+3. Dataset `fixtures/r4/cases.json` con la regla completa: precisión ≥ 80 % (medido: 87,2 %, recall 68 %; antes 87,5 % / 70 %).
+
+### CP-065 · Timeline limpio (subagentes y decimación)
+Traza: CP-050.1 · Fase 1 · S · done · AUTO
+1. Los eventos de subagente (`sidechain`) no dibujan puntos de contexto ni caché; `turns.sidechain` (esquema v2, migración probada sobre una base v1); filas viejas con heurística de recuperación ≤ 10 min.
+2. Series decimadas por columna de píxel (≤ 4 puntos: primero/mín/máx/último); sin círculos por punto con > 60 puntos (test con 2000 puntos).
+

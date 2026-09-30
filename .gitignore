@@ -5,3 +5,6 @@ out/
 .env
 certs/
 .contextpilot/
+
+# Capturas contra datos reales (títulos de conversaciones)
+docs/reports/ui-live/real*

@@ -1,4 +1,4 @@
-import { fmtPct, fmtTokens } from '@contextpilot/core';
+import { fmtPct, fmtTokens, MIN_BUCKET_SESSIONS, ruleName, TEAM_SCHEMA, type TeamExport } from '@contextpilot/core';
 
 // CP-057.3: importación de N exportaciones de equipo y vista agregada. Puro, sin servidor.
 // Formato tolerante: el daemon (`GET /team/export`) define la forma final; se aceptan
@@ -143,3 +143,124 @@ export function mergeTeam(files: TeamFile[]): TeamAggregate {
     totals: { sessions, suggestions, acceptanceText: suggestions ? fmtPct(accepted / suggestions) : '—', savedText: `≈${fmtTokens(saved)}` },
   };
 }
+
+// ---------------------------------------------------------------- CP-062: explicación y vista previa
+
+/** Qué se exporta (texto del encabezado de la pestaña Equipo). */
+export const TEAM_EXPORTED = [
+  'Totales por semana y proveedor: cantidad de sesiones y tokens (entrada, salida, caché).',
+  'Totales por semana y regla: sugerencias mostradas, aceptadas, ignoradas y pospuestas.',
+  'Ahorro estimado (≈) de las sugerencias aceptadas.',
+  'Fecha de generación (sólo el día).',
+];
+
+/** Qué NUNCA se exporta. */
+export const TEAM_NEVER = [
+  'Prompts, respuestas ni ningún texto de tus conversaciones.',
+  'Nombres de proyecto, títulos, rutas ni nombres de archivo.',
+  'Ids de sesión, hashes ni embeddings.',
+  `Grupos con menos de ${MIN_BUCKET_SESSIONS} sesiones: se ocultan (no se puede aislar a una persona).`,
+];
+
+const PROVIDER_LABEL: Record<string, string> = { anthropic: 'Anthropic (Claude)', openai: 'OpenAI', google: 'Google (Gemini)' };
+
+export interface TeamExportView {
+  ok: boolean;
+  /** Motivo si no es una exportación válida. */
+  error?: string;
+  generatedAt: string;
+  weeksText: string;
+  contributors: number;
+  suppressed: number;
+  suppressedText: string;
+  empty: boolean;
+  totals: { sessions: number; tokensText: string; suggestions: number; accepted: number; acceptanceText: string; savedText: string };
+  providers: { week: string; provider: string; sessions: number; inputText: string; outputText: string; cacheText: string; suggestions: number; acceptanceText: string; savedText: string }[];
+  rules: { week: string; ruleId: string; ruleName: string; sessions: number; fired: number; accepted: number; dismissed: number; snoozed: number; acceptanceText: string; savedText: string }[];
+}
+
+const pct = (a: number, b: number) => (b ? fmtPct(a / b) : '—');
+
+/** CP-062: vista previa legible de una exportación (la propia o un archivo del equipo). */
+export function teamExportView(raw: unknown): TeamExportView {
+  const e = raw as Partial<TeamExport> | undefined;
+  const base: TeamExportView = {
+    ok: false,
+    generatedAt: '—',
+    weeksText: '—',
+    contributors: 0,
+    suppressed: 0,
+    suppressedText: '',
+    empty: true,
+    totals: { sessions: 0, tokensText: '0', suggestions: 0, accepted: 0, acceptanceText: '—', savedText: '≈0' },
+    providers: [],
+    rules: [],
+  };
+  if (!e || typeof e !== 'object' || e.schema !== TEAM_SCHEMA) return { ...base, error: 'No es una exportación de equipo de ContextPilot' };
+  const byProvider = Array.isArray(e.byProvider) ? e.byProvider : [];
+  const byRule = Array.isArray(e.byRule) ? e.byRule : [];
+  const providers = byProvider.map((b) => ({
+    week: b.week,
+    provider: PROVIDER_LABEL[b.provider] ?? b.provider,
+    sessions: b.sessions,
+    inputText: fmtTokens(b.input),
+    outputText: fmtTokens(b.output),
+    cacheText: pct(b.cacheRead, b.input + b.cacheRead + b.cacheWrite),
+    suggestions: b.suggestions,
+    acceptanceText: pct(b.accepted, b.suggestions),
+    savedText: `≈${fmtTokens(b.savedTokens)}`,
+  }));
+  const rules = byRule.map((b) => ({
+    week: b.week,
+    ruleId: b.ruleId,
+    ruleName: ruleName(b.ruleId),
+    sessions: b.sessions,
+    fired: b.fired,
+    accepted: b.accepted,
+    dismissed: b.dismissed,
+    snoozed: b.snoozed,
+    acceptanceText: pct(b.accepted, b.fired),
+    savedText: `≈${fmtTokens(b.savedTokens)}`,
+  }));
+  const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);
+  const suggestions = sum(byProvider, (b) => b.suggestions);
+  const accepted = sum(byProvider, (b) => b.accepted);
+  const suppressed = e.suppressedBuckets ?? 0;
+  return {
+    ok: true,
+    generatedAt: e.generatedAt ?? '—',
+    weeksText: e.weeks?.length ? e.weeks.join(', ') : '—',
+    contributors: e.contributors ?? 1,
+    suppressed,
+    suppressedText: suppressed
+      ? `${suppressed} grupo(s) ocultos por tener menos de ${e.minBucketSessions ?? MIN_BUCKET_SESSIONS} sesiones.`
+      : 'Ningún grupo oculto.',
+    empty: !providers.length && !rules.length,
+    totals: {
+      sessions: sum(byProvider, (b) => b.sessions),
+      tokensText: fmtTokens(sum(byProvider, (b) => b.input + b.output + b.cacheRead + b.cacheWrite)),
+      suggestions,
+      accepted,
+      acceptanceText: pct(accepted, suggestions),
+      savedText: `≈${fmtTokens(sum(byProvider, (b) => b.savedTokens))}`,
+    },
+    providers,
+    rules,
+  };
+}
+
+/** Ejemplo corto de archivo (para la explicación de «Combinar»). */
+export const TEAM_EXAMPLE = JSON.stringify(
+  {
+    schema: TEAM_SCHEMA,
+    generatedAt: '2026-09-28',
+    minBucketSessions: MIN_BUCKET_SESSIONS,
+    contributors: 1,
+    weeks: ['2026-W39'],
+    byProvider: [{ week: '2026-W39', provider: 'anthropic', sessions: 12, input: 180000, output: 95000, cacheRead: 4200000, cacheWrite: 310000, suggestions: 9, accepted: 6, dismissed: 2, snoozed: 1, savedTokens: 240000 }],
+    byRule: [{ week: '2026-W39', ruleId: 'R1', sessions: 6, fired: 7, accepted: 5, dismissed: 1, snoozed: 1, acceptanceRate: 0.714, savedTokens: 210000 }],
+    suppressedBuckets: 3,
+  },
+  null,
+  2,
+);

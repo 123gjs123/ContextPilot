@@ -11,6 +11,8 @@ const CHAT_UI: Source[] = ['web', 'desktop'];
 const MIN = 60_000;
 /** D-6: umbral de coseno de R4 elegido sobre el dataset etiquetado (precisión > 80 %). */
 export const R4_COSINE = 0.3;
+/** CP-064: mínimo de palabras con contenido (sin stopwords) para evaluar R4. */
+export const R4_MIN_CONTENT_WORDS = 5;
 
 export const R4: Rule = {
   id: 'R4',
@@ -18,7 +20,8 @@ export const R4: Rule = {
   sources: ALL,
   requiresExact: false,
   // D-6: cosine calibrado con packages/core/test/fixtures/r4/cases.json (ver DECISIONS «R4»).
-  defaults: { cosine: R4_COSINE, minPrompts: 3, minContext: 20_000, minPromptTokens: 20 },
+  // CP-064: minContentWords = preguntas cortas («¿qué es esto?») no cuentan como tarea nueva.
+  defaults: { cosine: R4_COSINE, minPrompts: 3, minContext: 20_000, minPromptTokens: 20, minContentWords: R4_MIN_CONTENT_WORDS },
   defaultCooldownMs: 30 * MIN,
   on: ['prompt', 'response'],
   evaluate({ event, prev, thresholds }) {
@@ -27,8 +30,14 @@ export const R4: Rule = {
     if ((event.phase ?? 'response') === 'response' && prev.lastPhase === 'prompt') return null;
     if ((event.promptTokens ?? 0) < thresholds.minPromptTokens!) return null;
     if (prev.centroidN < thresholds.minPrompts! || prev.contextSize < thresholds.minContext!) return null;
+    // CP-064: sin el conteo (fuentes viejas) no se filtra; con él, una pregunta corta no es tarea nueva.
+    if (event.promptContentWords !== undefined && event.promptContentWords < (thresholds.minContentWords ?? 0)) return null;
     const sim = cosine(event.promptEmbedding, prev.centroid);
     if (sim >= thresholds.cosine!) return null;
+    // CP-064: también distinto de cada uno de los últimos prompts (un seguimiento del último pedido
+    // puede alejarse del centroide de una sesión larga sin ser otra tarea).
+    const recentSim = Math.max(-1, ...(prev.recentPrompts ?? []).map((r) => cosine(event.promptEmbedding!, r)));
+    if (recentSim >= thresholds.cosine!) return null;
     const clear = clearCommand(event.source);
     return {
       severity: 'info',

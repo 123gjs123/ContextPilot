@@ -222,7 +222,7 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
       const s = d.pipeline.getSession(id);
       if (!s) return send(res, 404, { error: 'sesión desconocida' });
       return send(res, 200, {
-        view: toView(s),
+        view: d.pipeline.view(s),
         timeline: d.storage.timeline(id),
         suggestions: d.storage.listSuggestions({ sessionId: id }).map((s) => d.pipeline.decorate(s)),
       });

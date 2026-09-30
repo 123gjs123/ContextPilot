@@ -97,6 +97,7 @@
     "idleSincePrevMs": 1184800,
     "promptHash": "0a476ed83a7f23",
     "promptTokens": 5,
+    "promptContentWords": 2,
     "phase": "prompt"
   },
   {

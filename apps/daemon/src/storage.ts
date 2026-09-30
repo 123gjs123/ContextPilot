@@ -8,7 +8,8 @@ import { writeAtomic } from './paths.js';
 // RNF-01: sólo métricas, hashes y embeddings. El contenido sólo entra a la tabla `contents` si la
 // fuente tiene opt-in (lo decide el llamador).
 
-export const SCHEMA_VERSION = 1;
+/** v2 (CP-065): columna `turns.sidechain` (subagentes fuera del timeline de contexto). */
+export const SCHEMA_VERSION = 2;
 const SAVE_DELAY_MS = 1500;
 
 const SCHEMA = `
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS turns (
   phase TEXT, source TEXT, provider TEXT, client TEXT, model TEXT,
   input INTEGER, output INTEGER, cache_read INTEGER, cache_write INTEGER, reasoning INTEGER,
   context_size INTEGER, context_window INTEGER, idle_ms INTEGER, estimated INTEGER, cache_ratio REAL,
-  prompt_hash TEXT);
+  prompt_hash TEXT, sidechain INTEGER);
 CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id, ts_ms);
 CREATE INDEX IF NOT EXISTS turns_ts ON turns(ts_ms);
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -49,6 +50,8 @@ export interface TimelinePoint {
   cacheRead: number;
   cacheWrite: number;
   estimated: boolean;
+  /** CP-065: llamada de subagente (true), del hilo principal (false) o desconocido (filas previas a v2). */
+  sidechain?: boolean | null;
 }
 
 export type StoredSuggestion = Suggestion & { feedback?: Feedback; status?: string };
@@ -87,7 +90,11 @@ export class Storage {
     this.db.exec(SCHEMA);
     const cur = Number(this.getMeta('schema_version') ?? 0);
     if (cur < SCHEMA_VERSION) {
-      // v1 es el primer esquema; futuras migraciones van acá, en orden.
+      // v1 es el primer esquema; las migraciones van acá, en orden.
+      // v2 (CP-065): turns.sidechain. Las filas previas quedan en NULL («desconocido»): el timeline
+      // del dashboard les aplica una heurística (ver apps/desktop/src/shared/timeline.ts).
+      const cols = this.all<{ name: string }>('PRAGMA table_info(turns)').map((c) => c.name);
+      if (!cols.includes('sidechain')) this.db.exec('ALTER TABLE turns ADD COLUMN sidechain INTEGER');
       this.setMeta('schema_version', String(SCHEMA_VERSION));
     }
   }
@@ -164,11 +171,12 @@ export class Storage {
     const n = this.run(
       `INSERT OR IGNORE INTO turns (id, session_id, ts, ts_ms, turn, phase, source, provider, client, model,
         input, output, cache_read, cache_write, reasoning, context_size, context_window, idle_ms, estimated,
-        cache_ratio, prompt_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        cache_ratio, prompt_hash, sidechain) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         e.id, e.sessionId, e.ts, tsMs, e.turn, e.phase ?? 'response', e.source, e.provider, e.client, e.model,
         t.input, t.output, t.cacheRead ?? 0, t.cacheWrite ?? 0, t.reasoning ?? 0,
         e.contextSize, e.contextWindow, e.idleSincePrevMs, t.estimated ? 1 : 0, cacheRatio, e.promptHash ?? '',
+        e.sidechain ? 1 : 0,
       ],
     );
     if (!n) return false;
@@ -192,7 +200,7 @@ export class Storage {
 
   timeline(sessionId: string, limit = 2000): TimelinePoint[] {
     return this.all<any>(
-      `SELECT ts, context_size, cache_ratio, input, output, cache_read, cache_write, estimated FROM turns
+      `SELECT ts, context_size, cache_ratio, input, output, cache_read, cache_write, estimated, sidechain FROM turns
        WHERE session_id = ? AND phase = 'response' ORDER BY ts_ms DESC LIMIT ?`,
       [sessionId, limit],
     )
@@ -206,6 +214,7 @@ export class Storage {
         cacheRead: r.cache_read,
         cacheWrite: r.cache_write,
         estimated: !!r.estimated,
+        sidechain: r.sidechain === null || r.sidechain === undefined ? null : !!r.sidechain,
       }));
   }
 

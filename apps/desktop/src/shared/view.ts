@@ -1,4 +1,4 @@
-import { fmtPct, fmtTokens } from '@contextpilot/core';
+import { fmtPct, fmtTokens, sessionNameOf } from '@contextpilot/core';
 import { activeSessions, visibleSuggestion, type DesktopState } from './store.js';
 import type { AccountRow, AdapterHealth, SessionRow, SessionView, Suggestion, SuggestionRow, TrayColor } from './types.js';
 
@@ -58,9 +58,9 @@ export function trayColor(state: DesktopState, now: number): TrayColor {
   return color;
 }
 
+/** CP-061: nombre legible de la sesión («contextpilot — título»); sin datos, el cliente. */
 export function sessionLabel(s: SessionView): string {
-  const short = s.sessionId.includes(':') ? s.sessionId.split(':').pop()! : s.sessionId;
-  return `${s.client || s.source} · ${short.slice(0, 8)}`;
+  return sessionNameOf(s).name;
 }
 
 export function suggestionRow(s: Suggestion): SuggestionRow {
@@ -71,6 +71,7 @@ export function suggestionRow(s: Suggestion): SuggestionRow {
     title: s.title,
     detail: s.detail,
     savingText: s.estimatedSavingTokens ? `ahorro ≈${fmtTokens(s.estimatedSavingTokens)} tokens` : undefined,
+    estimatedSavingTokens: s.estimatedSavingTokens,
     actions: s.actions.map((a, index) => ({ index, kind: a.kind, label: a.label })),
   };
 }
@@ -95,6 +96,7 @@ export function sessionRows(state: DesktopState, now: number): SessionRow[] {
     return {
       sessionId: s.sessionId,
       label: sessionLabel(s),
+      shortId: sessionNameOf(s).shortId,
       provider: s.provider,
       source: s.source,
       model: s.model,
@@ -104,6 +106,7 @@ export function sessionRows(state: DesktopState, now: number): SessionRow[] {
       cacheText: noData || s.cachePct === null ? 'caché —' : `caché ${fmtPct(s.cachePct)}`,
       noData,
       suggestion: sug ? suggestionRow(sug) : undefined,
+      view: s,
     };
   });
 }
@@ -121,7 +124,8 @@ export function trayTooltip(state: DesktopState, now: number): string {
   if (state.connection !== 'connected') return 'ContextPilot · daemon no disponible';
   const rows = sessionRows(state, now);
   if (!rows.length) return 'ContextPilot · sin sesiones activas';
-  const parts = rows.slice(0, 3).map((r) => `${r.label.split(' · ')[0]} ${r.meterText}`);
+  const short = (t: string) => (t.length > 22 ? `${t.slice(0, 21)}…` : t);
+  const parts = rows.slice(0, 3).map((r) => `${short(r.label)} ${r.meterText}`);
   const text = `ContextPilot · ${COLOR_TEXT[color]} · ${parts.join(' · ')}`;
   return text.length > 127 ? `${text.slice(0, 126)}…` : text;
 }
@@ -143,7 +147,8 @@ export function trayMenuModel(state: DesktopState, now: number): MenuItemModel[]
     if (!rows.length) items.push({ label: 'Sin sesiones activas', enabled: false });
     for (const r of rows.slice(0, 10)) {
       const flag = r.suggestion ? (r.suggestion.severity === 'critical' ? ' ⛔' : ' ⚠') : '';
-      items.push({ label: `${r.label} — ${r.meterText}${flag}`, id: `session:${r.sessionId}` });
+      const name = r.label.length > 48 ? `${r.label.slice(0, 47)}…` : r.label;
+      items.push({ label: `${name} · ${r.shortId} — ${r.meterText}${flag}`, id: `session:${r.sessionId}` });
     }
   }
   items.push({ label: '', type: 'separator' });

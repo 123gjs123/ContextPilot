@@ -1,4 +1,5 @@
 import type { Provider, Source, Suggestion, TurnEvent } from './types.js';
+import { cleanTitle, projectFromCwd } from './names.js';
 import { ulid } from './util.js';
 
 // CP-004: validación de contratos canónicos en el borde (POST /ingest/events, parsers).
@@ -78,6 +79,12 @@ export function validateTurnEvent(x: unknown, now = Date.now()): ValidateResult<
     if (x[k] !== undefined && !isNonNeg(x[k])) errors.push(`${k}: número ≥ 0`);
   }
   if (x.expensiveMode !== undefined && typeof x.expensiveMode !== 'string') errors.push('expensiveMode: string');
+  // CP-061: nombre de carpeta y título (cortos; el título no se persiste).
+  for (const k of ['project', 'title'] as const) {
+    if (x[k] !== undefined && (typeof x[k] !== 'string' || x[k].length > 500)) errors.push(`${k}: string (≤ 500)`);
+  }
+  if (x.promptContentWords !== undefined && !(Number.isInteger(x.promptContentWords) && x.promptContentWords >= 0))
+    errors.push('promptContentWords: entero ≥ 0');
 
   if (errors.length) return { ok: false, errors };
 
@@ -114,8 +121,13 @@ export function validateTurnEvent(x: unknown, now = Date.now()): ValidateResult<
     'sidechain',
     'windowSource',
     'systemHash',
+    'promptContentWords',
   ] as const;
   for (const k of OPTIONAL) if (x[k] !== undefined) (event as any)[k] = x[k];
+  const project = projectFromCwd(x.project);
+  if (project) event.project = project;
+  const title = cleanTitle(x.title);
+  if (title) event.title = title;
   return { ok: true, event };
 }
 

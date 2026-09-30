@@ -17,6 +17,8 @@ export interface LineParser {
   sessionId?: string;
   /** D-2: foco en memoria para `/compact <foco>` (sólo Claude Code). */
   focus?(): string | undefined;
+  /** CP-061: proyecto (cwd) y título de la conversación, en memoria. */
+  meta?(): { project?: string; title?: string };
 }
 
 export interface JsonlAdapterOptions {
@@ -41,6 +43,8 @@ export interface JsonlAdapterOptions {
 export class JsonlAdapter {
   private parsers = new Map<string, LineParser | null>();
   private registered = new Set<string>();
+  /** CP-061: sesión → transcript principal (para metaFor sin recorrer todos los parsers). */
+  private fileBySession = new Map<string, string>();
   readonly tailer: Tailer;
   private ready: Promise<void> = Promise.resolve();
 
@@ -80,6 +84,7 @@ export class JsonlAdapter {
     this.tailer.stop();
     this.parsers.clear();
     this.registered.clear();
+    this.fileBySession.clear();
   }
 
   /** D-2: foco del parser en memoria del transcript principal de la sesión (sin leer disco). */
@@ -90,13 +95,24 @@ export class JsonlAdapter {
     return undefined;
   }
 
+  /** CP-061: proyecto/título del parser en memoria del transcript principal de la sesión. */
+  metaFor(sessionId: string): { project?: string; title?: string } | undefined {
+    const file = this.fileBySession.get(sessionId);
+    const p = file ? this.parsers.get(file) : undefined;
+    return p?.meta?.();
+  }
+
   /** Lee ya lo nuevo de un archivo (hooks Stop/UserPromptSubmit aceleran la latencia). */
   poke(file: string): void {
     this.tailer.poke(file, 0);
   }
 
   private parser(file: string): LineParser | null {
-    if (!this.parsers.has(file)) this.parsers.set(file, this.o.parserFor(file));
+    if (!this.parsers.has(file)) {
+      this.parsers.set(file, this.o.parserFor(file));
+      const sid = this.o.sessionIdFor?.(file);
+      if (sid) this.fileBySession.set(sid, file);
+    }
     return this.parsers.get(file)!;
   }
 

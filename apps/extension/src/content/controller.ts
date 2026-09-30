@@ -7,7 +7,7 @@ import { copyText, extractForHandoff, isPendingValid, waitAndPaste, type Pending
 import type { CaptureMode, HandoffResponse, TabStatus, ToContent } from '../messages.js';
 import { currentModel, detectExpensiveMode, readMessages, userMessageCount } from '../page.js';
 import type { SiteDef } from '../sites.js';
-import { buildTurnEvent, promptHashOf, sessionIdFor, type TurnCapture } from '../turnEvent.js';
+import { buildTurnEvent, promptHashOf, sessionIdFor, titleFromDocument, type TurnCapture } from '../turnEvent.js';
 import { Banner } from '../ui/banner.js';
 
 export interface ControllerDeps {
@@ -267,6 +267,8 @@ export class ContentController {
     c.regenerated = !!(c.regenerated || regenClick || samePrompt);
     this.regenClickAt = 0;
     c.prevTs = this.prevTs.get(sid);
+    // CP-061: título de la conversación (pestaña); el daemon lo guarda sólo en memoria.
+    c.title ??= titleFromDocument(this.deps.doc?.title);
     if (this.pendingAttachments.length) {
       c.attachments = [...(c.attachments ?? []), ...this.pendingAttachments];
       this.pendingAttachments = [];

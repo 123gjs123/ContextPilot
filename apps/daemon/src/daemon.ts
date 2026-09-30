@@ -129,6 +129,8 @@ export class Daemon {
       planUsage: (p) => (p === 'anthropic' ? this.planUsage?.usageWindow() : undefined),
       // D-2: foco de /compact desde el parser en memoria del transcript de la sesión.
       focusFor: (sid) => this.claude?.focusFor(sid),
+      // CP-061: nombre legible (proyecto + título) desde los parsers en memoria; nunca se persiste el título.
+      metaFor: (sid) => this.claude?.metaFor(sid) ?? this.codex?.metaFor(sid),
     });
     this.proxy = new Proxy({
       env: this.env,

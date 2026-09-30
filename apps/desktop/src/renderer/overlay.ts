@@ -51,7 +51,9 @@ function sessionEl(r: SessionRow): HTMLElement {
   const el = h(
     'div',
     { class: 'session' },
-    h('div', { class: 'row1' }, h('span', { class: 'name', title: `${r.sessionId} · ${r.model}` }, r.label), h('span', { class: 'nums' }, nums)),
+    h('div', { class: 'row1' },
+      h('span', { class: 'name', title: `${r.label} · ${r.sessionId} · ${r.model}` }, r.label, h('span', { class: 'muted small' }, ` · ${r.shortId}`)),
+      h('span', { class: 'nums' }, nums)),
     h('div', { class: `meter ${r.meterLevel}`, role: 'meter', 'aria-valuenow': Math.round(pct * 100), 'aria-label': 'Ocupación de contexto' },
       h('i', { style: `width:${(pct * 100).toFixed(1)}%` })),
   );
