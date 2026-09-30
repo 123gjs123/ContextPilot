@@ -5,7 +5,7 @@ Alcance de este build: fases 0–3 completas. Fecha: 2026-09-30.
 
 ## Convenciones
 
-- **ID** `CP-NNN`, estable; no se renumera. Estados: `todo` → `doing` → `done` / `partial` / `blocked` / `won't`. **Estado al 2026-09-30 según [ACCEPTANCE.md](ACCEPTANCE.md)** (commit `5b805e3`): 21 `done`, 35 `partial` (10 sólo con pasos MANUAL pendientes, marcados «falta MANUAL»; 25 con criterios AUTO en PARTIAL/FAIL), 1 `blocked` (CP-043), 1 `won't` (CP-044, provisorio).
+- **ID** `CP-NNN`, estable; no se renumera. Estados: `todo` → `doing` → `done` / `partial` / `blocked` / `won't`. **Estado al 2026-09-30, ronda 2 de [ACCEPTANCE.md](ACCEPTANCE.md) §7** (commit `7f00517`): 31 `done`, 25 `partial` (14 sólo con pasos MANUAL/humanos pendientes, marcados «falta MANUAL»; 11 con criterios AUTO en PARTIAL/FAIL: CP-003, 016, 018, 019, 022, 027, 030, 037, 048, 049, 050), 1 `blocked` (CP-043), 1 `won't` (CP-044, provisorio). Ronda 1 (commit `5b805e3`): 21 / 35 / 1 / 1.
 - **MoSCoW** M/S/C/W. **Fase** 0–3 según SPEC §10.
 - **Verificación**: `AUTO` = test vitest (o script `scripts/verify/*`) ejecutable en esta máquina Windows sin sesión real; `MANUAL` = requiere sesión real de navegador, app desktop, interacción visual o aprobación humana; `MIXTA` = parte AUTO, parte MANUAL (cada criterio marcado).
 - Criterios en Dado / Cuando / Entonces. Un criterio sin marca es `AUTO`.
@@ -44,7 +44,7 @@ E0 → E1 (CP-004..CP-013) → E2 → E3 → E13(CLI) → E9 → E10 → E7 → 
 ## E0 — Fundaciones y guardas transversales
 
 ### CP-001 · Monorepo, build y tests
-Traza: RNF-10, D-2026-09-30 (sin nativos) · Fase 0 · M · partial · AUTO
+Traza: RNF-10, D-2026-09-30 (sin nativos) · Fase 0 · M · done · AUTO
 1. Dado un clon limpio, cuando corro `npm ci` y luego `npm test` en la raíz, entonces vitest corre los tests de todos los workspaces (`packages/*`, `apps/*`) y sale con código 0.
 2. Dado el repo instalado, cuando corro `npm run build`, entonces TypeScript compila todos los workspaces sin errores (`strict: true`).
 3. Dado `node_modules`, cuando corro `node scripts/verify/no-native.mjs`, entonces no encuentra ningún archivo `*.node` ni `binding.gyp` en dependencias de producción de `packages/*` ni `apps/daemon` y sale con 0 (Electron queda exceptuado sólo en `apps/desktop`).
@@ -90,7 +90,7 @@ Traza: RNF-01, RNF-02 · Fase 0 · M · done · AUTO
 3. Dada la base sql.js tras procesar todos los fixtures con opt-in apagado, cuando busco cualquier cadena de ≥ 20 caracteres de contenido de los fixtures, entonces no aparece (test de fuga).
 
 ### CP-007 · Estado de sesión
-Traza: RF-EST-01 · Fase 0 · M · partial · AUTO
+Traza: RF-EST-01 · Fase 0 · M · done · AUTO
 1. Dado una secuencia de `TurnEvent` de una sesión, cuando se aplica, entonces el estado expone `contextSize`, `contextWindow`, `contextPct`, `cacheRatio` (= cacheRead / (input + cacheRead + cacheWrite) de la última llamada), `idleMs` desde el último evento, y acumulados `input/output/cacheRead/cacheWrite/reasoning`.
 2. Dado un modelo con sufijo `[1m]` o ventana declarada en config, cuando se calcula `contextWindow`, entonces usa ese valor; dado un modelo desconocido, usa el default (D «ventanas») y marca `windowSource='default'`.
 3. Dado eventos de subagente (`isSidechain` / `subagents/*.jsonl`), cuando se aplican, entonces suman a acumulados pero no alteran `contextSize` de la sesión principal.
@@ -112,7 +112,7 @@ Traza: RF-REG-03, RNF-13 · Fase 0 · M · done · AUTO
 4. Dado feedback `snoozed`, entonces la regla queda silenciada 15 min para esa sesión.
 
 ### CP-010 · Reglas R1 (contexto) y R5 (resultado de herramienta grande)
-Traza: R1, R5, CU-01 · Fase 0 · M · partial · AUTO
+Traza: R1, R5, CU-01 · Fase 0 · M · done · AUTO
 1. Dada sesión Claude Code con `contextPct` 0,61, cuando llega el evento, entonces R1 emite `warn` con acción `copy` payload `/compact <foco>`; para Codex payload `/compact`; para Gemini CLI `/compress`.
 2. Dado `contextPct` 0,59, entonces R1 no emite.
 3. Dado R1, el `<foco>` se arma con los nombres de archivos/herramientas más usados de los últimos 5 turnos (sin contenido de prompt).
@@ -127,7 +127,7 @@ Traza: R2, CU-02 · Fase 0 · M · done · AUTO
 5. Dado evento estimado (web), entonces no emite (exige exacto).
 
 ### CP-012 · Regla R8 (agente en loop)
-Traza: R8, CU-05 · Fase 0 · M · partial · AUTO
+Traza: R8, CU-05 · Fase 0 · M · done · AUTO
 1. Dados 3 `toolCalls` consecutivos con mismo `name`+`argsHash` y `failed=true`, entonces R8 emite `critical` con acción `show-detail` (comando, 3 timestamps).
 2. Dado un éxito intermedio o args distintos, entonces el contador se reinicia.
 3. Dado R8 emitido, entonces la sugerencia llega al canal de notificaciones (CP-047).
@@ -145,7 +145,7 @@ Traza: RF-REG-04 · Fase 1 · S · done · AUTO
 3. Dada severidad `info` y 3 descartes más, entonces X queda en modo «sólo side panel/dashboard» (no banner ni overlay); nunca se deshabilita sola.
 
 ### CP-015 · Reglas R3 (caída de caché) y R6 (herramientas/MCP sin uso)
-Traza: R3, R6 · Fase 1 · S · partial · AUTO
+Traza: R3, R6 · Fase 1 · S · done · AUTO
 1. Dados 2 turnos consecutivos con `cacheRead/input` < 0,5 tras un turno ≥ 0,5, entonces R3 emite con `show-detail` listando el diff de modelo, set de herramientas y hash del system prompt entre el turno bueno y los malos.
 2. Dado 1 solo turno bajo, no emite.
 3. Dada una herramienta/servidor MCP presente en las definiciones y sin invocación en 20 turnos, entonces R6 emite listando cada una con costo por turno (tokens de su definición); con 19, no. Si la fuente no expone definiciones, R6 no se evalúa (health lo indica).
@@ -157,7 +157,7 @@ Traza: R7, W4 · Fase 1 · S · partial · AUTO
 3. Dado turno web en modo caro (thinking/extended/Pro detectado por el adaptador) con prompt < 200 tokens, entonces W4 emite `info` sin acción de copia (acción `show-detail`).
 
 ### CP-017 · Reglas R9 y W2 (contenido repetido por hash)
-Traza: R9, W2 · Fase 1 · S · partial · AUTO
+Traza: R9, W2 · Fase 1 · S · done · AUTO
 1. Dado un bloque > 2 k tokens cuyo hash aparece 2 veces en la misma sesión, entonces R9 emite sugerencia de referenciarlo como archivo (acción `show-detail`).
 2. Dado un adjunto web cuyo `hash` aparece 2 veces (misma o distinta conversación del mismo sitio en 7 días), entonces W2 emite sugiriendo Projects/Gems/GPTs según sitio.
 3. Sólo se persisten hashes, nunca el bloque (verificado por test de fuga CP-006).
@@ -286,7 +286,7 @@ Traza: RF-CAP-03, RF-NOR-01, RNF-10 · Fase 0 · M · partial (falta MANUAL) · 
 ## E5 — Adaptador Gemini CLI
 
 ### CP-034 · Lector de telemetría OTel de Gemini CLI
-Traza: RF-CAP-04, RF-NOR-01, RNF-10 · Fase 0 · M · partial · AUTO
+Traza: RF-CAP-04, RF-NOR-01, RNF-10 · Fase 0 · M · partial (falta MANUAL) · AUTO
 1. Dado `fixtures/gemini-cli/telemetry.log` (sintético, formato de `telemetry.outfile`), entonces el lector emite un `TurnEvent` por `gemini_cli.api_response` con `input=input_token_count`, `cacheRead=cached_content_token_count`, `output=output_token_count`, `reasoning=thoughts_token_count`, `estimated=false`, y `toolCalls` desde `gemini_cli.tool_call` (`success=false` → `failed`).
 2. Dado el daemon, entonces acepta OTLP/HTTP JSON en `POST /otlp/v1/logs` (sin token, sólo loopback) y produce los mismos eventos que el archivo.
 3. Dado `node scripts/install-gemini-telemetry.mjs`, entonces escribe en `~/.gemini/settings.json` el bloque `telemetry` (target local, outfile u `otlpEndpoint` HTTP) con backup e idempotencia.
@@ -298,7 +298,7 @@ Traza: RF-CAP-04, RF-NOR-01, RNF-10 · Fase 0 · M · partial · AUTO
 ## E6 — Proxy base-URL (`apps/daemon`)
 
 ### CP-035 · Proxy transparente Anthropic / OpenAI / Google
-Traza: RF-CAP-08, RNF-04, RNF-05, RNF-11, RNF-12, criterio fase 1 «proxy < 5 ms» · Fase 1 · M · partial · AUTO
+Traza: RF-CAP-08, RNF-04, RNF-05, RNF-11, RNF-12, criterio fase 1 «proxy < 5 ms» · Fase 1 · M · partial (falta MANUAL) · AUTO
 1. Dado `ANY /proxy/anthropic/*` (ídem `openai`, `google`), entonces reenvía método, path, query, headers (salvo hop-by-hop) y body al upstream configurado, y devuelve status, headers y body sin modificar, en streaming.
 2. Dado upstream simulado local que emite SSE en 50 chunks con 20 ms de separación, entonces el cliente recibe cada chunk con retraso adicional p95 < 5 ms y el primer byte con overhead p95 < 5 ms (`scripts/verify/proxy-latency.mjs`); la respuesta es byte a byte idéntica.
 3. Dado pedidos con `x-api-key`, `Authorization` o `x-goog-api-key`, entonces esos valores no aparecen en logs, en sql.js ni en ningún archivo bajo `%LOCALAPPDATA%\ContextPilot` (test de fuga).
@@ -307,7 +307,7 @@ Traza: RF-CAP-08, RNF-04, RNF-05, RNF-11, RNF-12, criterio fase 1 «proxy < 5 ms
 6. MANUAL: `ANTHROPIC_BASE_URL=http://127.0.0.1:47800/proxy/anthropic claude -p "hola"` responde normalmente.
 
 ### CP-036 · Extracción de uso desde el stream del proxy
-Traza: RF-CAP-08, RF-NOR-01 · Fase 1 · M · partial · AUTO
+Traza: RF-CAP-08, RF-NOR-01 · Fase 1 · M · done · AUTO
 1. Dados fixtures SSE/JSON de Messages API (`message_start`/`message_delta.usage`), OpenAI Chat Completions (`stream_options.include_usage`) y Responses (`response.completed`), y Gemini `generateContent`/`streamGenerateContent` (`usageMetadata`), entonces se emite un `TurnEvent` exacto por respuesta igual a `*.expected.json`.
 2. La extracción corre sobre una copia (tee) del stream; si el parser lanza, la respuesta al cliente no se afecta y health marca `error`.
 3. Dado un header opcional `X-CP-Session`, entonces se usa como `sessionId`; si falta, se deriva según D «sesión de proxy».
@@ -374,7 +374,7 @@ Traza: RF-CAP-10 · Fase 2 · C · won't · MANUAL
 ## E9 — UI: statusline
 
 ### CP-045 · Script de statusline para Claude Code
-Traza: RF-EST-01, SPEC §9 statusline, RNF-08 · Fase 0 · M · partial · AUTO
+Traza: RF-EST-01, SPEC §9 statusline, RNF-08 · Fase 0 · M · done · AUTO
 1. Dado stdin JSON de Claude Code con `session_id`, entonces `scripts/statusline.mjs` imprime una línea como `ctx 68% · cache 91% · ⚠ /compact` usando `GET /statusline/:sessionId`.
 2. Dado sugerencia vigente, entonces muestra `⚠ <acción corta>`; sin sugerencia, sólo métricas; cifras estimadas con `≈`.
 3. Dado daemon caído o > 300 ms, entonces imprime `ContextPilot: sin datos` y sale 0.
@@ -386,7 +386,7 @@ Traza: RF-EST-01, SPEC §9 statusline, RNF-08 · Fase 0 · M · partial · AUTO
 ## E10 — UI: tray, overlay y notificaciones (`apps/desktop`)
 
 ### CP-046 · Tray y overlay con acciones
-Traza: RF-SUG-01, RF-SUG-02, RF-SUG-03, RF-HAN-03, SPEC §9 tray · Fase 0 · M · partial · MIXTA
+Traza: RF-SUG-01, RF-SUG-02, RF-SUG-03, RF-HAN-03, SPEC §9 tray · Fase 0 · M · partial (falta MANUAL) · MIXTA
 1. Dado el view-model del tray (lógica pura, testeable sin Electron), cuando llegan `session-state` y `suggestion` por WS, entonces produce la lista de sesiones activas y la sugerencia vigente por sesión (máx. una, CP-009).
 2. Dada acción `copy`, entonces copia el payload al portapapeles (Electron `clipboard`) y envía feedback `accepted`; «Ignorar» → `dismissed`; «Posponer 15 min» → `snoozed`.
 3. Dada acción `handoff` en sesión CLI, entonces copia `<traspaso>` y el comando de limpieza del cliente (`/clear` Claude Code y Gemini CLI, `/new` Codex) según D «portapapeles».
@@ -457,14 +457,14 @@ Traza: RF-HAN-03 · Fase 0 · M · partial (falta MANUAL) · AUTO
 ## E14 — Configuración
 
 ### CP-054 · Configuración base: adaptadores, reglas, umbrales, opt-in
-Traza: RF-CFG-02, RF-REG-02, RNF-01 · Fase 0 · M · partial · AUTO
+Traza: RF-CFG-02, RF-REG-02, RNF-01 · Fase 0 · M · done · AUTO
 1. Dado `%LOCALAPPDATA%\ContextPilot\config.json` (esquema validado, defaults del SPEC), entonces `GET /config` lo devuelve y `PUT /config` lo valida y aplica en caliente sin reiniciar.
 2. Dado un adaptador deshabilitado, entonces su tailer/listener se detiene y health `disabled`; dada una regla deshabilitada, no evalúa.
 3. Dado `contentOptIn: {<fuente>: true}`, sólo entonces esa fuente puede persistir contenido (redactado); default todo `false`.
 4. Config inválida en disco → se usa la última válida y health lo informa.
 
 ### CP-055 · Perfiles de plan por proveedor
-Traza: RF-CFG-01, RF-EST-02 · Fase 1 · M · partial · AUTO
+Traza: RF-CFG-01, RF-EST-02 · Fase 1 · M · done · AUTO
 1. Dado un perfil `{provider, kind: 'api', pricing}` o `{provider, kind: 'subscription', windows: [{hours: 5, limit}, {days: 7, limit}]}`, entonces se valida y lo usa CP-018.
 2. Presets editables para planes conocidos, con límites marcados «a calibrar» (el proveedor no publica cifras exactas).
 3. Sin perfil, R10 no se evalúa y el side panel/tray no muestra proyección.
@@ -479,7 +479,7 @@ Traza: RF-CFG-03 · Fase 2 · C · done · AUTO
 ## E15 — Modo equipo
 
 ### CP-057 · Exportación agregada y anonimizada + vista agregada
-Traza: RF-TEAM-01, RNF-01, criterio fase 3 · Fase 3 · C · partial · MIXTA
+Traza: RF-TEAM-01, RNF-01, criterio fase 3 · Fase 3 · C · partial (falta MANUAL) · MIXTA
 1. Dado `node scripts/team-export.mjs --week`, entonces genera un JSON con sólo agregados (por proveedor/regla/semana: sesiones, tokens, sugerencias, aceptación, ahorro); sin `sessionId`, sin hashes, sin nombres de proyecto/rutas, sin modelo de embedding.
 2. Test de fuga: el archivo no contiene ninguna cadena hex ≥ 16 caracteres, ningún ULID/UUID, ninguna ruta, ninguna cadena de los fixtures; buckets con < 5 sesiones se suprimen.
 3. Dado N archivos exportados, el dashboard los importa y muestra el agregado del equipo (sin servidor; D «modo equipo»).

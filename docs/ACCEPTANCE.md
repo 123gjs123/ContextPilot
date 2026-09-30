@@ -1,5 +1,7 @@
 # Aceptación — fases 0–3 (CP-001 … CP-058)
 
+> **Ronda 2** (commit `7f00517`, fixes D-1…D-18): ver [§7](#7-ronda-2--commit-7f00517) al final. Las secciones 1–6 son la **ronda 1** (commit `5b805e3`) y se conservan como histórico.
+
 Fecha: 2026-09-30 · Commit verificado: `5b805e3` (árbol sin cambios de código; sólo se agregaron docs y `scripts/verify/*` de verificación) · Máquina: Windows 11 Pro 26200, Node 24.15.0.
 Verificó: product owner / tech lead (rol `product`). Fuentes: [SPEC.md](SPEC.md), [BACKLOG.md](BACKLOG.md), [DECISIONS.md](DECISIONS.md), [API.md](API.md), [INSTALL.md](INSTALL.md), [SPIKE-desktop.md](SPIKE-desktop.md), `docs/reports/*.md`.
 
@@ -391,3 +393,171 @@ Referencias a tests: `core/` = `packages/core/test/`, `daemon/` = `apps/daemon/t
 4. Bajar W1 con `PUT /config` y probar banner + traspaso en los 3 sitios, tema claro/oscuro (CP-041.3, CP-048.4).
 5. H-2 → statusline real (CP-045.5); `ANTHROPIC_BASE_URL=… claude -p "hola"` (CP-035.6); traspaso real con `claude -p` (CP-052.5); `CP_TEST_CLIPBOARD=1` (CP-053.1).
 6. `npm run start -w @contextpilot/desktop` con daemon: tray, overlay, toast de R8, dashboard (CP-046.5, CP-047.3, CP-050.4, CP-051.4).
+
+---
+
+## 7. Ronda 2 — commit `7f00517`
+
+Fecha: 2026-09-30 (11:30–12:00 local) · Commit verificado: `7f00517` (fixes D-1…D-18, [reports/fixes-1.md](reports/fixes-1.md), [reports/scripts-1.md](reports/scripts-1.md)). Árbol sin cambios de código; se agregaron `scripts/verify/r10-replay-cooldown.ts` y `scripts/verify/vitest.scripts.config.ts`.
+Contexto nuevo: el **daemon real corre** en `127.0.0.1:47800` con `%LOCALAPPDATA%\ContextPilot` (arrancado 11:32:25 local); hooks + statusline instalados en el `~/.claude/settings.json` real (H-2). Del daemon real sólo se **leyó** (`/health`, `/account`, `/sessions`, `/stats`, `/statusline/<id>`, copia de `cp.db` abierta en memoria). Pruebas intrusivas: daemon propio en puerto libre con home y carpeta de proyectos temporales.
+
+### 7.1 Corridas
+
+| Comando | Resultado |
+| --- | --- |
+| `npx vitest run` | **48 archivos, 406 pass, 1 skipped**, exit 0, 13,9 s |
+| `npx vitest run --config scripts/verify/vitest.scripts.config.ts` *(nuevo)* | `scripts/test/**`: **31 tests, 30 pass, 1 FAIL** (`snapshot-fixtures.test.ts:119`, `harden.tags` esperado 0, recibido 3). **El `vitest.config.ts` raíz no incluye `scripts/test/**`** (la línea que agregó el agente de scripts se perdió al integrar) → `npm test` no corre estos 31 tests → **D-20** |
+| `npm run typecheck` | exit 0 (core src+test, daemon, desktop, extension) |
+| `npm run build` | exit 0: typecheck + `dist/ listo (5 bundles, manifest MV3 validado)` + `[desktop] build ok` |
+| `npm run smoke -w @contextpilot/desktop` | `SMOKE_OK tray=true overlay=true dashboard=true connection=connected` (se conectó al daemon real, sólo lectura) |
+| `CP_PERF_STRICT=1 npx vitest run apps/daemon/test/proxy.test.ts` | 6/6; primer byte p95 **1,51 ms**, agregado por chunk **0,56 ms** (RNF-05 ✓) |
+| `node scripts/verify/no-native.mjs` · `no-autosend.mjs` | OK · OK (regresión) |
+| `npx tsx scripts/verify/real-transcripts-usage.ts` | **320 archivos** (216 subagentes), **14 455 llamadas**, 0 excepciones, diferencia **0** (regresión CP-030 ✓) |
+| `npx tsx scripts/verify/estimator-abs.ts` | 407 muestras, mediana \|err\| 4,9 %, p90 17,1 %, 87 % ≤ 15 % (sin cambios) |
+| `npx tsx scripts/replay-transcripts.ts --top 5` | 10 287 eventos, **0,43 sugerencias/h activa** (R2 0,12 · R1 0,10 · R5 0,09 · R3 0,06 · R6 0,04 · R4 0,02) — SPEC §11 ≤ 3/h ✓ |
+| `node scripts/snapshot-fixtures.mjs` (dry-run, `~/.claude/projects` real) | exit 0, 40 sesiones evaluadas, 3 elegidas (subagentes+1h+error / 1h / 1h+error), equivalencia de uso idéntica, fuga identidad 0 / patrones 0. Capa 2: `claves=0 valores=0`, `etiquetas=735/937/231` (re-cuenta las etiquetas que el core ya reemplazó por `<xxxx>`: por eso falla el test de arriba; no es fuga). **No se escribió** (`--write` pendiente) |
+| `node scripts/install-gemini-telemetry.mjs --dry-run` (HOME real) | diff: agrega `telemetry {enabled, target:'local', otlpEndpoint:'', outfile, logPrompts:false}`; no escribió (`~/.gemini` sin `settings.json`). Claves verificadas estáticamente en el bundle de Gemini CLI **0.62.0** instalado (`outfile`, `otlpEndpoint`, `otlpProtocol`, `logPrompts`, `useCollector`; eventos `gemini_cli.api_response`/`tool_call`, atributos `input_token_count`, `cached_content_token_count`, `thoughts_token_count`) |
+| `npx tsx apps/daemon/scripts/eval-projection.ts` | 676 muestras, 41 ventanas, 107 casos. Ritmo 60 min (R10): media **19,5 %**, **1 h 26,8 %**, 2 h 18,0 %, 3 h 10,8 % → a 1 h **no** cumple < 20 % con datos reales |
+| `npx tsx scripts/verify/r10-replay-cooldown.ts` *(nuevo)* | **exit 1**: control (sin evento viejo) → R10 publicada al primer evento en vivo; con un evento de hace 20 min en el transcript → R10 **no** se publica ni al arrancar ni con el evento en vivo → **D-19** |
+
+### 7.2 Observaciones en vivo del lead
+
+**(a) `/account` proyecta agotamiento 13:27 < fin de ventana 14:11 pero `suggestions: []` — CONFIRMADO, defecto D-19 (Alta).**
+- Lectura del daemon real (11:33): `burn[anthropic].projections[5h] = {used 56, perHour 23, windowEndsAt 14:11:56, exhaustAt 13:28:12}`; ventana de 7 d: `exhaustAt` 07:53 del 1/10 < fin 09:29. `suggestions: []`. En la copia de `cp.db` hay **1** sugerencia en total (R5) y **ninguna R10**. Config real: R10 habilitada, `rateWindowMin 60`, `minPoints 3`, cooldown 60 min; plan-usage fresco. No es umbral ni `minPoints` (la proyección de `/account` usa la misma serie, el mismo plan y el mismo ritmo de 60 min que R10).
+- Causa (código): al arrancar, el tailer re-procesa los transcripts de los últimos 30 min con `ingest(..., { replay: true })`; en replay el pipeline evalúa con `now = ts del evento` (`apps/daemon/src/pipeline.ts:171`) y descarta lo que ya expiró (`:176`), pero el motor ya fijó el cooldown (`packages/core/src/engine.ts:223-228`, `select()`). R10 es de cuenta (`account:anthropic`): el primer evento re-procesado la «dispara» en el pasado, se descarta, y deja un cooldown de 60 min contado desde ese ts viejo. Todos los eventos en vivo posteriores caen en `suppressed: cooldown`. El daemon real se reinició a las 11:32:25 → R10 silenciada hasta ~1 h después del primer evento re-procesado, sin haberse mostrado nunca.
+- Reproducción aislada: `scripts/verify/r10-replay-cooldown.ts` (arriba).
+- Contra CP-018.2 («dada proyección de agotamiento antes del fin de ventana, R10 emite `critical`»): **contradicho en producción** (el test unitario pasa porque no hay replay). Agravantes de diseño (D-22): R10 sólo se evalúa con eventos `response` de alguna sesión (un usuario que sólo usa Claude Desktop/web sin extensión nunca la ve aunque `plan-usage` avance), y la sugerencia de cuenta vive 10 min (TTL general) con cooldown de 60 min → el `⏳ límite hh:mm` de la statusline se ve 10 de cada 60 min.
+
+**(b) `burn.tokensPerMin ≈ 2,1 M` — CONFIRMADO, defecto D-21 (Media) + decisión PO.**
+- `storage.usagePoints()` (`apps/daemon/src/storage.ts:215`) y `pushBurnSample` (`packages/core/src/state.ts:106,154`) suman `input + output + cacheRead + cacheWrite` con peso 1. Últimos 15 min de la copia de `cp.db` (110 llamadas): input 220 · output 14 019 · cacheWrite 269 406 · **cacheRead 27 289 398 (98,5 %)** → 1,84 M/min crudo; ponderado (cacheRead × 0,1) **≈ 201 k/min**.
+- Impacto: con plan-usage la proyección está en % (serie de Desktop) y **no** se ve afectada; pero `burn.tokensPerMin`, `SessionView.burn` y **la proyección local** (perfil en tokens sin plan-usage: R10 y `/stats.burn` usan la misma serie) sobreestiman ~10×.
+- Decisión PO (DECISIONS 2026-09-30 «ritmo»): `tokensPerMin` = **tokens efectivos** = `input + cacheWrite + output + 0,1 × cacheRead` (misma ponderación que el ahorro, DECISIONS «ahorro»); se agrega `rawTokensPerMin` para transparencia; la serie local de R10 usa efectivos. Con plan-usage no cambia nada.
+
+**(c) Statusline `ctx 31% · cache 100% · ⚠ grep/head` — LEGÍTIMA.**
+- Sugerencia visible: R5 «Bash devolvió 13k tokens», creada 11:28:25 (única fila de `suggestions`). Origen en el transcript: subagente `agent-a9bff8fed22cf7692.jsonl` (sidechain de la sesión `ec6c3793…`), `tool_result` de Bash a las 09:28:22Z con **19 439 caracteres** (listado de URLs de assets). `estimateTokens` = **13 147**; delta real de contexto en la llamada siguiente del subagente = **11 195** tokens (143 192 → 154 387). Ambos > 10 000 → R5 correcta; el estimador sobreestima +17 % en texto con URLs/hashes (D-23, baja).
+- `grep/head` sale de `shortAction()` (D-3 corregido, confirmado en vivo; ronda 1: `⚠ Para`). `cache 99–100 %` coincide con `cacheRatio` 0,992 de `/sessions`. Observación (sin defecto): R5 de un subagente se muestra en la statusline del hilo principal (DECISIONS «sidechain» permite R5/R8/R10 en sidechain); la acción corrige el prompt del subagente, no el del usuario.
+
+### 7.3 Re-verificación de criterios PARTIAL / FAIL / NV de la ronda 1
+
+| Historia | Crit. | R1 | R2 | Evidencia ronda 2 |
+| --- | --- | --- | --- | --- |
+| CP-001 | 2 | PARTIAL | **PASS** | `npm run typecheck` exit 0 (4 workspaces, strict; core incluye `test/`); `npm run build` corre typecheck antes de los bundles |
+| CP-003 | 1 | FAIL | **PARTIAL** | `scripts/snapshot-fixtures.mjs` existe; dry-run real OK (3 sets con subagentes / 1h / error, equivalencia de uso idéntica, fuga 0). **Fixtures no escritos ni commiteados** (`packages/core/test/fixtures/claude-code/` sigue con 1 sesión + 1 subagente) |
+| CP-003 | 2 | FAIL | **PASS** | `scripts/lib/replay.ts` `streamReplay(src, dest, {speed})` con línea partida; `scripts/test/replay.test.ts` 5/5 (sólo con la config de verificación: D-20) |
+| CP-003 | 3 | PARTIAL | PARTIAL | Sin cambios: faltan `*.expected.json` de Claude Code, DOM gemini y proxy; fixtures web sintéticos |
+| CP-007 | 4 | PARTIAL | **PASS** | `daemon/fixes1.test.ts:190` (`toEqual` del estado completo tras reinicio) |
+| CP-010 | 1 | PARTIAL | **PASS** | `core/fixes1.test.ts:84` (61 % → `warn`), `daemon/fixes1.test.ts:65` (`/compact <foco>` por WS); Codex/Gemini `core/rules.test.ts:64` |
+| CP-010 | 3 | FAIL | **PASS** | `core/parsers/claudeCodeInventory.test.ts:54` (archivos/herramientas de los últimos 5 prompts, sin texto de prompt); foco no persiste en `cp.db` (`daemon/fixes1.test.ts:65`) |
+| CP-010 | 4 | PARTIAL | **PASS** | `core/fixes1.test.ts:156` (`show-detail` con ejemplo por herramienta); live 7.2 (c) |
+| CP-012 | 1 | PARTIAL | **PASS** | `core/fixes1.test.ts:208` (comando `Bash (args #…)` + 3 hh:mm:ss) |
+| CP-015 | 1 | PARTIAL | **PASS** | `core/fixes1.test.ts:136,140` (system prompt vía `systemHash` del proxy; modelo 2 turnos antes). En CLI no hay system prompt observable: el diff lo omite (aceptado) |
+| CP-015 | 3 | FAIL | **PASS** | R6 `sources` claude-code+proxy `core/fixes1.test.ts:173-190`; OpenAI por proxy `daemon/proxy-providers.test.ts:115`; health live `rule-R6: … codex/gemini-cli: no evaluable` |
+| CP-016 | 1 | PARTIAL | PARTIAL | `tier` sigue fijo en `models.ts` (no configurable) |
+| CP-017 | 2 | PARTIAL | **PASS** | `core/fixes1.test.ts:250`, `daemon/fixes1.test.ts:241,255` (otra conversación del mismo sitio, 7 días) |
+| CP-018 | 1 | FAIL | **PARTIAL** | Expuesto: `SessionView.burn`, `/stats.burn`, `/account.burn` (`daemon/fixes1.test.ts:143`, live). Pero el ritmo suma `cacheRead` ×1 → 2,1 M/min en vivo (**D-21**) |
+| CP-018 | 2 | PARTIAL | **FAIL** | Unitario ✓ (`core/fixes1.test.ts:228`: `critical`, hh:mm, `show-detail`). **En producción no emite** tras un reinicio del daemon: exhaustAt 13:28 < 14:11 y `/account.suggestions = []`; reproducido por `verify/r10-replay-cooldown.ts` (**D-19**) |
+| CP-018 | 3 | FAIL | **PARTIAL** | Literal ✓ sobre fixture sintético (`core/projection.test.ts:46`: < 20 % a 1/2/3 h). Con 41 ventanas reales: 1 h **26,8 %**, 2 h 18,0 %, 3 h 10,8 % |
+| CP-018 | 4 | PARTIAL | PARTIAL | Rama USD (`rules/other.ts:74`) sigue sin test de la regla (sólo validación del perfil en `desktop/config-team.test.ts:41`) |
+| CP-019 | 2 | FAIL | **PASS** | `core/r4.dataset.test.ts:56`: 100 casos, precisión 87,5 % (35/40), recall 70 % a coseno 0,30. Dataset **sintético** |
+| CP-019 | 3 | PARTIAL | **PASS** | `core/fixes1.test.ts:147` (`handoff` + `open-session` + `/clear`) |
+| CP-019 | 4 | FAIL | FAIL | `transformers.js` no implementado (DECISIONS D-6). Propuesta de diferimiento → H-8 |
+| CP-022 | 4 | PARTIAL | PARTIAL | Mecanismo ✓ (`daemon/fixes1.test.ts:122,129`: con id configurado, otro id → 403 HTTP y WS). Default vacío = permisivo con aviso (`/health origin`, live) hasta H-5 |
+| CP-027 | 3 | PARTIAL | PARTIAL | Versión de formato desconocida → `error`: no implementado (fixes-1 «pendiente») |
+| CP-030 | 5 | PARTIAL | PARTIAL | Campos requeridos faltantes → health `error`: no implementado |
+| CP-034 | 3 | FAIL | **PASS** | `scripts/install-gemini-telemetry.mjs` + `scripts/test/install-gemini-telemetry.test.ts` 10/10 (HOME temporal: backup, idempotencia, `--uninstall`); dry-run real; esquema confirmado en Gemini CLI 0.62.0 |
+| CP-035 | 1 | PARTIAL | **PASS** | `daemon/proxy-providers.test.ts:115,132` (OpenAI y Google de punta a punta, bytes idénticos) |
+| CP-035 | 3 | PARTIAL | **PASS** | `daemon/proxy-providers.test.ts:165` (`Authorization`, `x-api-key`, `x-goog-api-key`, `?key=` ausentes de `cp.db`, logs y home) |
+| CP-035 | 4 | PARTIAL | **PASS** | `daemon/proxy-providers.test.ts:237` (proxy corporativo simulado: absolute-form y `CONNECT`) |
+| CP-036 | 2 | PARTIAL | **PASS** | `daemon/proxy-providers.test.ts:178` (extractor que lanza → bytes idénticos, `proxy: error`) |
+| CP-037 | 2 | PARTIAL | PARTIAL | Sin test de `chrome.storage`/WS/POST del service worker |
+| CP-043 | 2 | PARTIAL | **PASS** | `desktop/cdp-retry.test.ts:16,28` (no-data + reintento, `markRefused`) |
+| CP-045 | 2 | PARTIAL | **PASS** | `daemon/fixes1.test.ts:104,110`; live `ctx 32% · cache 99% · ⚠ grep/head` |
+| CP-045 | 5 | NV | **PASS** | H-2 hecho: `statusLine` y 4 hooks en `~/.claude/settings.json` (backup `.cp-bak`); `/health hooks: ok lastEventAt 09:33:01Z`; `scripts/statusline.mjs` real → línea en 97–111 ms; el lead la ve en su sesión |
+| CP-046 | 2 | PARTIAL | **PASS** | `desktop/account-overlay.test.ts:31` (Ignorar → `dismissed`, Posponer 15 min → `snoozed`) |
+| CP-048 | 1 | PARTIAL | PARTIAL | Sigue estructural (jsdom sin layout); se cierra con CP-048.4 MANUAL |
+| CP-049 | 2 | PARTIAL | PARTIAL | Toggles por `PUT /config` sin test |
+| CP-050 | 2 | PARTIAL | PARTIAL | Panel de salud sin test |
+| CP-054 | 4 | PARTIAL | **PASS** | `daemon/fixes1.test.ts:162` (`config.json.last-valid` + health) |
+| CP-055 | 1 | PARTIAL | **PASS** | `daemon/fixes1.test.ts:181`, `core/fixes1.test.ts:228,233` (5 h + 7 días) |
+| CP-055 | 3 | PARTIAL | **PASS** | Desvío (plan-usage sin perfil) **aprobado por el humano (H-7)**; sin perfil ni plan-usage R10 no evalúa `core/rules.test.ts:229` |
+| CP-057 | 1 | PARTIAL | **PASS** | `scripts/team-export.mjs` + `scripts/test/team-export.test.ts` 9/9 (fuga, buckets < 5, `--week`) |
+| CP-033 | 5 | NV | NV | Codex CLI 0.159.2 instalado (H-6) pero sin login; `~/.codex/sessions` no existe (health `no-data`) |
+| CP-034 | 5 | NV | NV | Gemini CLI 0.62.0 instalado, sin login; instalador de telemetría no corrido |
+| CP-043 | 4 | NV | NV | Bloqueado: CDP rechazado; H-1 reencauzada al spike 2 ([SPIKE-desktop-traffic.md](SPIKE-desktop-traffic.md), recomienda leer la IndexedDB `claude-conversation-store` en sólo lectura) |
+
+Resto de NV (sin cambios, requieren navegador/app/humano): CP-029.4, 035.6, 037.4, 038.4, 039.3, 040.4, 041.3, 046.5, 047.3, 048.4, 049.4, 050.4, 051.4, 052.5, 053.1, 057.4.
+Criterios PASS de la ronda 1: regresión cubierta por la suite (406/406), typecheck/build/smoke, `real-transcripts-usage`, `estimator-abs`, `no-native`, `no-autosend`, proxy estricto y replay. **Sin regresiones** en criterios PASS. No se re-midió `idle.mjs` (10 min) ni la latencia live append→WS (cubierta por `daemon/fixes1.test.ts:40`).
+
+### 7.4 Totales ronda 2
+
+| Estado | Ronda 1 | Ronda 2 | Movimientos |
+| --- | --- | --- | --- |
+| PASS | 149 | **174** | +19 desde PARTIAL, +5 desde FAIL, +1 desde NV (CP-045.5) |
+| PARTIAL | 30 | **13** | 10 siguen; +3 desde FAIL (CP-003.1, 018.1, 018.3) |
+| FAIL | 9 | **2** | CP-019.4 (sigue); **CP-018.2 nuevo** (falla en producción, D-19) |
+| NOT VERIFIABLE | 20 | **19** | |
+| **Total** | 208 | **208** | |
+
+| Estado de historia | N | Historias |
+| --- | --- | --- |
+| done | **31** | CP-001, 002, 004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 017, 020, 021, 023, 024, 025, 026, 028, 031, 032, 036, 042, 045, 054, 055, 056, 058 |
+| partial — AUTO completo, sólo falta MANUAL/humano | **14** | CP-029, 033, 034, 035, 038, 039, 040, 041, 046, 047, 051, 052, 053, 057 |
+| partial — con PARTIAL/FAIL en criterios AUTO | **11** | CP-003, 016, 018, 019, 022, 027, 030, 037, 048, 049, 050 |
+| blocked | 1 | CP-043 (H-1, spike 2) |
+| won't | 1 | CP-044 (provisorio, H-1) |
+
+### 7.5 Veredicto por fase (ronda 2)
+
+| Fase | Criterio | R2 | Evidencia |
+| --- | --- | --- | --- |
+| 0 | Eventos de 3 CLIs y 3 sitios | **NO CUMPLIDO** | Claude Code real ✓ (daemon real + hooks reales). Codex/Gemini instalados, **falta login** del usuario. 3 sitios: sin sesión real (H-4) |
+| 0 | Tokens CLI = `usage` ±0 % | CUMPLIDO | 320 transcripts / 14 455 llamadas, diferencia 0 |
+| 0 | Estimación web ±15 % | PARCIAL | Sin cambios (sin verdad de terreno web) |
+| 0 | Sugerencia < 1 s | CUMPLIDO | D-1 corregido: R1 visible en 50/50 sesiones con plan-usage (`daemon/fixes1.test.ts:40`) |
+| 0 | Cero pedidos modificados | CUMPLIDO | CP-058 + regresión |
+| **0** | **Veredicto** | **No aceptada todavía** | Defectos de CU-01 (D-1, D-2, D-3) cerrados; D-3 confirmado en vivo. Falta verificación real: extensión en 3 sitios (H-4) y sesiones Codex/Gemini (login, H-6). D-20 (tests de scripts fuera de `npm test`) debe cerrarse antes de aceptar |
+| 1 | Proxy < 5 ms | CUMPLIDO | primer byte p95 1,51 ms, +0,56 ms/chunk |
+| 1 | Proyección < 20 % error en 5 h | **PARCIAL** | Fixture sintético ✓; datos reales 1 h 26,8 % ✗, 2 h 18,0 %, 3 h 10,8 % |
+| 1 | Informe de spike | CUMPLIDO | `SPIKE-desktop.md` + `SPIKE-desktop-traffic.md` |
+| **1** | **Veredicto** | **No aceptada** | R10 no emite en producción tras reinicio (D-19, CP-018.2 FAIL); ritmo mal definido (D-21); proyección real a 1 h fuera de tolerancia. R6 y proxy OpenAI/Google cerrados |
+| 2 | R4 precisión > 80 % / 100 casos | CUMPLIDO (sintético) | 87,5 % / recall 70 % |
+| 2 | Desktop health verde 5 días | **BLOQUEADO** | CDP rechazado; spike 2 propone adaptador IndexedDB (H-1) |
+| **2** | **Veredicto** | **No aceptada** | Bloqueada por H-1; `transformers.js` FAIL (H-8) |
+| 3 | Nada de contenido ni hashes sale | CUMPLIDO (AUTO) | `core/team.test.ts`, `scripts/test/team-export.test.ts` |
+| 3 | Aprobación de seguridad | PENDIENTE | H-3 |
+| **3** | **Veredicto** | **Sólo falta H-3** | `scripts/team-export.mjs` entregado |
+
+### 7.6 Defectos (ronda 2)
+
+Cerrados en esta ronda (verificados): D-1, D-2, D-3, D-4, D-6 (salvo `transformers.js` → H-8), D-8, D-9 (mecanismo; default → H-5), D-10, D-11, D-12, D-13, D-15, D-17 (0 `ERR_IPC_CHANNEL_CLOSED` en las corridas de esta ronda), D-18.
+Abiertos de la ronda 1: **D-5** parcial (proyección real a 1 h 26,8 %), **D-7** parcial (fixtures reales sin escribir/commitear; web sintéticos), **D-14** parcial (`tier` no configurable), **D-16** parcial (CP-027.3, 030.5 sin implementar; 037.2, 049.2, 050.2 sin test).
+
+| # | Prioridad | Historias | Defecto | Evidencia | Arreglo esperado |
+| --- | --- | --- | --- | --- | --- |
+| **D-19** | **Alta** | CP-018, CP-024 | **R10 silenciada tras reiniciar el daemon.** En el replay de arranque (`ingest(..., {replay:true})`, `now = ts del evento`) el motor fija el cooldown de `account:anthropic:R10` (60 min) aunque la sugerencia se descarte por expirada; los eventos en vivo quedan `suppressed: cooldown`. Caso real: exhaustAt 13:28 < fin 14:11, `/account.suggestions=[]`, 0 filas R10 en `cp.db` | `pipeline.ts:171-177`, `engine.ts:223-228`; `scripts/verify/r10-replay-cooldown.ts` exit 1 | En replay no fijar cooldown ni lugar visible de lo que no se publica (o no evaluar reglas `scope:'account'` en replay: su serie es la actual, no la del evento). Test de daemon: transcript con evento de hace 20 min + plan-usage caliente → R10 por WS al primer evento en vivo. El script de verificación debe salir 0 |
+| **D-20** | **Alta** | CP-001, CP-003, CP-034, CP-057 | `vitest.config.ts` raíz no incluye `scripts/test/**/*.test.ts` → 31 tests (replay, snapshot, instalador Gemini, team-export) fuera de `npm test`; 1 falla (`snapshot-fixtures.test.ts:119`: `harden.tags` 3 ≠ 0; la capa 2 re-cuenta etiquetas ya reemplazadas por el core, no es fuga) | 7.1 | Agregar el glob; corregir la expectativa o que la capa 2 ignore `<x…x>` |
+| **D-21** | Media | CP-018, CP-055 | El «ritmo» (`burn.tokensPerMin`, `SessionView.burn`) y la serie local de R10 suman `cacheRead` con peso 1: 2,1 M tokens/min en vivo, 98,5 % lectura de caché. Con plan-usage no afecta la proyección (%); con perfil en tokens R10 local sobreestimaría ~10× | `storage.ts:215`, `state.ts:106,154`; `cp.db` 15 min: crudo 1,84 M/min vs ponderado 201 k/min | Decisión PO 2026-09-30 «ritmo»: tokens efectivos = `input + cacheWrite + output + 0,1·cacheRead`; `rawTokensPerMin` aparte; misma serie para R10 local. Actualizar API.md |
+| **D-22** | Media | CP-018, CP-045, CP-047 | Visibilidad de R10: (1) sólo se evalúa en eventos `response` de alguna sesión: con uso sólo en Desktop/web sin extensión, `plan-usage` avanza y R10 nunca corre; (2) TTL 10 min con cooldown 60 min → `⏳ límite` visible 10 de cada 60 min aunque la proyección siga vigente | `rules/other.ts` R10 `on:['response']`; `engine.ts:23` TTL | Evaluar reglas de cuenta también en cada poll de plan-usage (60 s) y vencer la sugerencia de cuenta cuando la proyección deja de cumplirse o se renueva la ventana (no por TTL fijo) |
+| D-23 | Baja | CP-005, CP-010 | `estimateTokens` sobreestima +17 % en salidas con URLs/hashes (13 147 vs 11 195 reales). No cambió el resultado de R5 en el caso visto; puede adelantarla cerca del umbral | 7.2 (c) | Recalibrar con muestras de `tool_result` (no sólo respuestas) |
+
+### 7.7 Decisiones humanas (estado al cierre de la ronda 2)
+
+| # | Estado | Registro |
+| --- | --- | --- |
+| H-1 | **Reencauzada**: el usuario pidió analizar el tráfico saliente / datos locales de Claude Desktop; spike 2 en curso ([SPIKE-desktop-traffic.md](SPIKE-desktop-traffic.md): tráfico no descifrable sin MITM; recomienda IndexedDB `claude-conversation-store` en sólo lectura). CP-043 sigue `blocked`, CP-044 `won't` provisorio | DECISIONS 2026-09-30 «H-1» |
+| H-2 | **Aprobada y hecha** por el lead (backup `settings.json.cp-bak`; sólo claves `hooks` y `statusLine`) | DECISIONS «H-2» |
+| H-3 | Pendiente (aprobación de seguridad del export de equipo) | — |
+| H-4 | Pendiente (aprobación IT de la extensión) | — |
+| H-5 | Pendiente (`allowedExtensionIds` obligatorio o permisivo) | — |
+| H-6 | **Aprobada**: Codex CLI 0.159.2 y Gemini CLI 0.62.0 instalados globalmente; **falta login del usuario** y correr `node scripts/install-gemini-telemetry.mjs` | DECISIONS «H-6» |
+| H-7 | **Aprobada**: `plan-usage-history.json` como fuente de R10 | DECISIONS «H-7» |
+| H-8 | **Nueva**: diferir `transformers.js` (CP-019.4) a post-v1 — el embedder de hashing cumple el criterio de fase 2 (87,5 %) y MiniLM agrega la descarga de un modelo a través del proxy corporativo. Recomendación PO: diferir; reabrir si la precisión con prompts reales cae < 80 % | — |
+
+### 7.8 Pendiente para el humano (checklist ronda 2)
+
+1. **Login** en Codex (`codex`) y Gemini (`gemini`); luego `node scripts/install-gemini-telemetry.mjs` y una sesión corta en cada uno → cierra CP-033.5, CP-034.5 y el criterio F0 «3 CLIs».
+2. H-4 → cargar `apps/extension/dist` en Chrome/Edge y seguir §6 pasos 1–4 (CP-037.4, 038.4, 039.3, 040.4, 041.3, 048.4, 049.4, 029.4).
+3. H-3 (seguridad del export), H-5 (ids de extensión), H-8 (diferir `transformers.js`).
+4. H-1 → decidir sobre el adaptador IndexedDB que propone el spike 2 (desbloquea CP-043 / F2).
+5. MANUAL restantes: `claude -p` por el proxy (CP-035.6), traspaso real (CP-052.5), `CP_TEST_CLIPBOARD=1` (CP-053.1), tray/overlay/toast/dashboard con el daemon real (CP-046.5, 047.3, 050.4, 051.4).
+6. Para ingeniería (no humano): D-19, D-20 (Alta); D-21, D-22 (Media); `snapshot-fixtures --write` y commit (D-7); D-23.
