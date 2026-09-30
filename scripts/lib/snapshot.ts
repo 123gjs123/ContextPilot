@@ -107,6 +107,9 @@ function keyPlaceholder(k: string, used: Set<string>): string {
 function hardenTags(s: string, ctx: HardenContext): string {
   return s.replace(TAG, (m, slash: string, name: string) => {
     if (KNOWN_TAGS.has(name) && !ctx.identity.has(name)) return m;
+    // D-20: `<xxxx>` ya es el placeholder que puso el core (sanitizeTranscriptLine reemplaza las
+    // etiquetas desconocidas desde fixes-1): no es una corrección de esta capa, no se cuenta.
+    if (/^x+$/.test(name)) return m;
     ctx.stats.tags++;
     return `<${slash}${'x'.repeat(name.length)}>`;
   });

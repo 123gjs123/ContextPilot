@@ -1,7 +1,7 @@
 import { clearCommand, compactCommand } from '../actions.js';
 import { cosine } from '../embed.js';
 import { priceTiersFor } from '../models.js';
-import { projectPlan } from '../projection.js';
+import { DEFAULT_RATE_DAMPING, projectPlan } from '../projection.js';
 import { promptTotal } from '../state.js';
 import type { Rule, Source } from '../types.js';
 import { fmtTokens } from '../util.js';
@@ -51,7 +51,8 @@ export const R10: Rule = {
   sources: ALL,
   requiresExact: false,
   // D-5: ritmo de 60 min (error medido en plan-usage real: 19,6 % vs 20,8 % con 30 min; ver DECISIONS).
-  defaults: { rateWindowMin: 60, minPoints: 3 },
+  // Ronda 2: el ritmo se amortigua ×0,6 al proyectar (uso a ráfagas; DECISIONS «proyección amortiguada»).
+  defaults: { rateWindowMin: 60, minPoints: 3, rateDamping: DEFAULT_RATE_DAMPING },
   defaultCooldownMs: 60 * MIN,
   on: ['response'],
   // D-1: señal de cuenta, no de sesión: una por proveedor, fuera del cupo visible por sesión.
@@ -61,7 +62,8 @@ export const R10: Rule = {
     const pts = usageWindow.points;
     if (plan.kind === 'subscription') {
       // D-15: todas las ventanas del plan (5 h + 7 días); gana la que se agota primero.
-      const proj = projectPlan(plan, (k) => usageWindow.byWindow?.[k] ?? pts, now, thresholds.rateWindowMin! * MIN);
+      const damping = thresholds.rateDamping ?? DEFAULT_RATE_DAMPING;
+      const proj = projectPlan(plan, (k) => usageWindow.byWindow?.[k] ?? pts, now, thresholds.rateWindowMin! * MIN, damping);
       const hit = proj.filter((p) => p.exhaustAt !== undefined).sort((a, b) => a.exhaustAt! - b.exhaustAt!)[0];
       if (!hit) return null;
       const hhmm = new Date(hit.exhaustAt!).toTimeString().slice(0, 5);
@@ -72,7 +74,7 @@ export const R10: Rule = {
         // CP-018.2: critical con la hora proyectada.
         severity: 'critical',
         title: `A este ritmo llegás al límite a las ${hhmm}${multi}`,
-        detail: `Usaste ${fmt(hit.used)} de ${fmt(hit.budget)} en la ventana actual; ritmo de los últimos ${thresholds.rateWindowMin} min: ${fmt(hit.perHour)}/h. La ventana se renueva a las ${new Date(hit.windowEndsAt).toTimeString().slice(0, 5)}.`,
+        detail: `Usaste ${fmt(hit.used)} de ${fmt(hit.budget)} en la ventana actual; ritmo de los últimos ${thresholds.rateWindowMin} min: ${fmt(hit.perHour)}/h (se proyecta con ${fmt(hit.projectedPerHour)}/h: el uso suele bajar tras una ráfaga). La ventana se renueva a las ${new Date(hit.windowEndsAt).toTimeString().slice(0, 5)}.`,
         actions: [{ kind: 'show-detail', label: 'Ver proyección' }],
       };
     }

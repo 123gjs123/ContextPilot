@@ -147,8 +147,11 @@ export interface SessionState {
   status: 'active' | 'idle' | 'closed';
   /** Extensión: origen de contextWindow (DECISIONS «ventanas»). */
   windowSource?: WindowSource;
-  /** Extensión (D-5): muestras recientes de consumo {ts ms, tokens} para el ritmo de la sesión (≤ 60 min). */
-  burnSamples?: { ts: number; tokens: number }[];
+  /**
+   * Extensión (D-5): muestras recientes de consumo para el ritmo de la sesión (≤ 60 min). D-21:
+   * `tokens` = tokens efectivos (`effectiveTokens`); `raw` = suma sin ponderar (ausente en muestras viejas).
+   */
+  burnSamples?: { ts: number; tokens: number; raw?: number }[];
   /** Extensión (D-14): hash del system prompt (proxy) y llamada (`calls`) en que cambió por última vez. */
   systemHash?: string;
   systemChangedAtCall?: number;
@@ -199,7 +202,15 @@ export interface Config {
   maxVisiblePerSession: number;
   /** Extensión (DECISIONS «ventanas»): ventana declarada por id exacto de modelo. */
   contextWindows?: Record<string, number>;
+  /**
+   * Extensión (D-14 / CP-016.1): nivel de modelo declarado por el usuario. Clave = id exacto o
+   * fragmento del id (sin distinguir mayúsculas; gana el más largo); pisa la tabla de `models.ts`.
+   */
+  modelTiers?: Record<string, ModelTier>;
 }
+
+/** Nivel de modelo (R7: «tarea simple en el modelo más caro» sólo evalúa `top`). */
+export type ModelTier = 'top' | 'mid' | 'small';
 
 export interface RuleContext {
   event: TurnEvent;
@@ -212,6 +223,8 @@ export interface RuleContext {
   plan?: PlanProfile;
   /** D-11 (W2): subidas del mismo adjunto en el sitio (todas las conversaciones, 7 días), por hash. */
   siteAttachmentCounts?: Record<string, number>;
+  /** D-14: overrides de nivel de modelo de la config. */
+  modelTiers?: Record<string, ModelTier>;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { PlanProfile, SessionState } from './types.js';
+import type { PlanProfile, SessionState, TokenUsage } from './types.js';
 
 // RF-EST-02 / CP-018 (D-5): ritmo de consumo y proyección de agotamiento contra las ventanas del plan.
 // Puro: lo usan R10, el SessionView (`burn`), GET /stats y la evaluación de error por replay.
@@ -14,6 +14,22 @@ const BURN_MAX_SAMPLES = 120;
 export interface Point {
   ts: number;
   tokens: number;
+}
+
+/**
+ * D-21 (DECISIONS «ritmo»): peso de la lectura de caché en el ritmo. Mismo 0,1 que el ahorro
+ * (`CACHE_READ_WEIGHT` de savings.ts; se repite acá para no importar savings desde projection).
+ */
+export const BURN_CACHE_READ_WEIGHT = 0.1;
+
+/** D-21: tokens efectivos de una llamada = input + cacheWrite + output + 0,1 × cacheRead. */
+export function effectiveTokens(t: Pick<TokenUsage, 'input' | 'output' | 'cacheRead' | 'cacheWrite'>): number {
+  return t.input + (t.cacheWrite ?? 0) + t.output + BURN_CACHE_READ_WEIGHT * (t.cacheRead ?? 0);
+}
+
+/** D-21: suma cruda (sin ponderar), expuesta aparte como `rawTokensPerMin`. */
+export function rawTokens(t: Pick<TokenUsage, 'input' | 'output' | 'cacheRead' | 'cacheWrite'>): number {
+  return t.input + (t.cacheWrite ?? 0) + t.output + (t.cacheRead ?? 0);
 }
 
 export interface PlanWindowSpec {
@@ -49,26 +65,49 @@ export interface Projection {
   used: number;
   budget: number;
   pct: number;
-  /** Ritmo reciente (unidades por hora). */
+  /** Ritmo reciente medido (unidades por hora). */
   perHour: number;
+  /**
+   * D-5: ritmo con el que se proyecta (`perHour × rateFactor`): el uso real es a ráfagas y el ritmo
+   * reciente sobreestima el resto de la ventana. Igual a `perHour` si no hay amortiguación.
+   */
+  projectedPerHour: number;
   windowEndsAt: number;
   /** Hora proyectada de agotamiento (ms) si ocurre antes del fin de la ventana. */
   exhaustAt?: number;
 }
 
 /**
- * Proyección sobre una ventana: usado = suma de puntos desde `now − ms`; ritmo = suma de los últimos
- * `rateWindowMs` / duración; la ventana termina a `primer punto + ms`.
+ * D-5: factor de amortiguación del ritmo para proyectar (R10 `rateDamping`). Elegido sobre la primera
+ * mitad de las ventanas reales de plan-usage (mínimo error sin perder ningún agotamiento real) y
+ * validado en la segunda mitad: ver DECISIONS «proyección amortiguada» y `eval-projection.ts --holdout`.
  */
-export function projectWindow(points: Point[], w: PlanWindowSpec, now: number, rateWindowMs = 60 * MIN): Projection | null {
+export const DEFAULT_RATE_DAMPING = 0.6;
+
+/**
+ * Proyección sobre una ventana: usado = suma de puntos desde `now − ms`; ritmo = suma de los últimos
+ * `rateWindowMs` / duración; la ventana termina a `primer punto + ms`. D-5: el agotamiento se proyecta
+ * con `ritmo × rateFactor` (1 = sin amortiguar).
+ */
+export function projectWindow(points: Point[], w: PlanWindowSpec, now: number, rateWindowMs = 60 * MIN, rateFactor = 1): Projection | null {
   const inWin = points.filter((p) => p.ts >= now - w.ms && p.ts <= now);
   if (!inWin.length) return null;
   const used = inWin.reduce((s, p) => s + p.tokens, 0);
   const recent = inWin.filter((p) => p.ts >= now - rateWindowMs).reduce((s, p) => s + p.tokens, 0);
-  const perMs = recent / rateWindowMs;
+  const measured = recent / rateWindowMs;
+  const perMs = measured * rateFactor;
   const windowEndsAt = inWin[0]!.ts + w.ms;
   const remaining = w.budget - used;
-  const out: Projection = { window: w.key, label: w.label, used, budget: w.budget, pct: used / w.budget, perHour: perMs * HOUR, windowEndsAt };
+  const out: Projection = {
+    window: w.key,
+    label: w.label,
+    used,
+    budget: w.budget,
+    pct: used / w.budget,
+    perHour: measured * HOUR,
+    projectedPerHour: perMs * HOUR,
+    windowEndsAt,
+  };
   if (remaining <= 0) out.exhaustAt = now;
   else if (perMs > 0) {
     const at = now + remaining / perMs;
@@ -83,10 +122,11 @@ export function projectPlan(
   series: (key: string) => Point[],
   now: number,
   rateWindowMs?: number,
+  rateFactor?: number,
 ): Projection[] {
   const out: Projection[] = [];
   for (const w of planWindows(plan)) {
-    const p = projectWindow(series(w.key), w, now, rateWindowMs);
+    const p = projectWindow(series(w.key), w, now, rateWindowMs, rateFactor);
     if (p) out.push(p);
   }
   return out;
@@ -94,11 +134,14 @@ export function projectPlan(
 
 // ---------- ritmo por sesión (SessionView.burn) ----------
 
-/** Agrega una muestra de consumo a la sesión (tokens de la llamada) y poda las viejas. */
-export function pushBurnSample(s: SessionState, ts: number, tokens: number): void {
-  if (!Number.isFinite(ts) || tokens <= 0) return;
+/**
+ * Agrega una muestra de consumo a la sesión y poda las viejas. D-21: `tokens` = efectivos de la
+ * llamada; `raw` = suma cruda (si no se informa, igual a `tokens`).
+ */
+export function pushBurnSample(s: SessionState, ts: number, tokens: number, raw = tokens): void {
+  if (!Number.isFinite(ts) || raw <= 0) return;
   const arr = (s.burnSamples ??= []);
-  arr.push({ ts, tokens });
+  arr.push({ ts, tokens, raw });
   const from = ts - BURN_KEEP_MS;
   let i = 0;
   while (i < arr.length && arr[i]!.ts < from) i++;
@@ -107,18 +150,32 @@ export function pushBurnSample(s: SessionState, ts: number, tokens: number): voi
 }
 
 export interface Burn {
-  /** Tokens por minuto, media móvil de 15 min (CP-018.1). */
+  /** Tokens efectivos por minuto (D-21: input + cacheWrite + output + 0,1 × cacheRead), media móvil de 15 min (CP-018.1). */
   tokensPerMin: number;
   tokensPerHour: number;
+  /** D-21: tokens por minuto sin ponderar (la lectura de caché pesa 1), para transparencia. */
+  rawTokensPerMin: number;
   windowMin: number;
   estimated: boolean;
 }
 
 export function sessionBurn(s: SessionState, now = Date.now()): Burn {
   const from = now - BURN_WINDOW_MS;
-  const sum = (s.burnSamples ?? []).filter((p) => p.ts >= from && p.ts <= now).reduce((a, p) => a + p.tokens, 0);
+  let sum = 0;
+  let raw = 0;
+  for (const p of s.burnSamples ?? []) {
+    if (p.ts < from || p.ts > now) continue;
+    sum += p.tokens;
+    raw += p.raw ?? p.tokens;
+  }
   const perMin = sum / (BURN_WINDOW_MS / MIN);
-  return { tokensPerMin: Math.round(perMin), tokensPerHour: Math.round(perMin * 60), windowMin: 15, estimated: s.estimated };
+  return {
+    tokensPerMin: Math.round(perMin),
+    tokensPerHour: Math.round(perMin * 60),
+    rawTokensPerMin: Math.round(raw / (BURN_WINDOW_MS / MIN)),
+    windowMin: 15,
+    estimated: s.estimated,
+  };
 }
 
 // ---------- evaluación de la proyección por replay (CP-018.3) ----------
@@ -191,17 +248,23 @@ function pctAt(samples: PctSample[], t: number): number | null {
 /**
  * CP-018.3 sobre datos reales: en cada ventana completa, a 1 h, 2 h y 3 h del inicio se proyecta el %
  * al final de la ventana con el ritmo del método y se compara con el % real al final.
- * Métodos: `recent:<min>` (ritmo de los últimos N min, el de R10) y `mean` (ritmo desde el inicio).
+ * Métodos: `recent:<min>` (ritmo de los últimos N min), `damp:<factor>:<min>` (D-5: ritmo de los
+ * últimos N min × factor, el de R10) y `mean` (ritmo desde el inicio).
+ * `windowFilter(i, n)` restringe las ventanas (p. ej. mitad de ajuste / mitad de validación).
  */
 export function evaluateProjection(
   samples: PctSample[],
-  opts: { windowMs?: number; checkpointsH?: number[]; method?: string } = {},
+  opts: { windowMs?: number; checkpointsH?: number[]; method?: string; windowFilter?: (index: number, total: number) => boolean } = {},
 ): ProjectionEval {
   const windowMs = opts.windowMs ?? 5 * HOUR;
   const checkpoints = opts.checkpointsH ?? [1, 2, 3];
   const method = opts.method ?? 'recent:30';
   const cases: ProjectionCase[] = [];
-  const windows = splitWindows(samples, windowMs).filter((w) => w.complete && w.samples.length >= 4);
+  const all = splitWindows(samples, windowMs).filter((w) => w.complete && w.samples.length >= 4);
+  const windows = opts.windowFilter ? all.filter((_, i) => opts.windowFilter!(i, all.length)) : all;
+  const [kind, a1, a2] = method.split(':');
+  const factor = kind === 'damp' ? Number(a1 ?? DEFAULT_RATE_DAMPING) : 1;
+  const spanMin = kind === 'damp' ? Number(a2 ?? 60) : Number(a1 ?? 30);
   for (const w of windows) {
     const end = w.start + windowMs;
     const last = w.samples.at(-1)!;
@@ -214,9 +277,9 @@ export function evaluateProjection(
       let rateMs: number;
       if (method === 'mean') rateMs = now / (t - w.start);
       else {
-        const span = Number(method.split(':')[1] ?? 30) * MIN;
+        const span = spanMin * MIN;
         const before = pctAt(w.samples, Math.max(w.start, t - span)) ?? 0;
-        rateMs = (now - before) / Math.min(span, t - w.start);
+        rateMs = ((now - before) / Math.min(span, t - w.start)) * factor;
       }
       const projected = Math.min(100, now + Math.max(0, rateMs) * (end - t));
       cases.push({ windowStart: w.start, checkpointH: h, projectedPct: projected, actualPct: actual, error: Math.abs(projected - actual) / 100 });

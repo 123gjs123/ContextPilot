@@ -106,7 +106,16 @@ export class PlanUsageAdapter {
   private wasFresh = false;
 
   constructor(
-    private o: { health: HealthRegistry; log: Logger; env?: NodeJS.ProcessEnv; pollMs?: number; onChange?: () => void },
+    private o: {
+      health: HealthRegistry;
+      log: Logger;
+      env?: NodeJS.ProcessEnv;
+      pollMs?: number;
+      /** Cambió la frescura (el plan sintético entra o sale de la config del motor). */
+      onChange?: () => void;
+      /** D-22: llegaron muestras nuevas (el archivo cambió): reevaluar las reglas de cuenta. */
+      onSamples?: () => void;
+    },
   ) {}
 
   start(): void {
@@ -156,6 +165,7 @@ export class PlanUsageAdapter {
     }
     this.samples = samples;
     this.refreshHealth();
+    this.o.onSamples?.();
   }
 
   private refreshHealth(): void {

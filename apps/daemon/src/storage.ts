@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync } from 'node:fs';
 import initSqlJs from 'sql.js';
 import type { Database, SqlValue } from 'sql.js';
-import type { Feedback, SessionState, Suggestion, TurnEvent } from '@contextpilot/core';
+import { effectiveTokens, rawTokens, type Feedback, type SessionState, type Suggestion, type TurnEvent } from '@contextpilot/core';
 import { writeAtomic } from './paths.js';
 
 // CP-023: almacenamiento sql.js (WASM, DECISIONS) volcado a cp.db con debounce y escritura atómica.
@@ -209,13 +209,19 @@ export class Storage {
       }));
   }
 
-  /** Puntos de consumo por proveedor desde `fromMs` (R10). */
-  usagePoints(provider: string, fromMs: number): { ts: number; tokens: number }[] {
+  /**
+   * Puntos de consumo por proveedor desde `fromMs` (R10 local, /stats.burn). D-21: `tokens` = tokens
+   * efectivos (input + cacheWrite + output + 0,1 × cacheRead, `effectiveTokens` del core); `raw` = suma cruda.
+   */
+  usagePoints(provider: string, fromMs: number): { ts: number; tokens: number; raw: number }[] {
     return this.all<any>(
-      `SELECT ts_ms, input + output + cache_read + cache_write AS tokens FROM turns
+      `SELECT ts_ms, input, output, cache_read, cache_write FROM turns
        WHERE provider = ? AND phase = 'response' AND ts_ms >= ? ORDER BY ts_ms`,
       [provider, fromMs],
-    ).map((r) => ({ ts: r.ts_ms, tokens: r.tokens }));
+    ).map((r) => {
+      const t = { input: r.input ?? 0, output: r.output ?? 0, cacheRead: r.cache_read ?? 0, cacheWrite: r.cache_write ?? 0 };
+      return { ts: r.ts_ms, tokens: effectiveTokens(t), raw: rawTokens(t) };
+    });
   }
 
   // ---------- sesiones ----------
@@ -255,6 +261,18 @@ export class Storage {
         s.id, s.sessionId, s.ruleId, s.severity, Date.parse(s.createdAt ?? '') || Date.now(), Date.parse(s.expiresAt),
         s.estimatedSavingTokens ?? 0, s.quiet ? 1 : 0, JSON.stringify(s),
       ],
+    );
+  }
+
+  /**
+   * D-22: renovación de una sugerencia de cuenta abierta (mismo id): vencimiento, severidad y texto.
+   * No toca feedback ni estado; devuelve false si ya no estaba abierta.
+   */
+  refreshSuggestion(s: Suggestion): boolean {
+    return (
+      this.run("UPDATE suggestions SET severity = ?, expires_ms = ?, quiet = ?, json = ? WHERE id = ? AND status = 'open'", [
+        s.severity, Date.parse(s.expiresAt), s.quiet ? 1 : 0, JSON.stringify(s), s.id,
+      ]) > 0
     );
   }
 

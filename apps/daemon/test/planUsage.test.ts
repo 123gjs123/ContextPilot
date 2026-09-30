@@ -56,7 +56,8 @@ describe('adaptador claude-plan-usage', () => {
     const r = (await (await t.api('/ingest/events', { method: 'POST', json: [ev({ sessionId: 'plan-1', contextSize: 5000 })] })).json()) as {
       suggestions: { ruleId: string; severity: string; title: string }[];
     };
-    const r10 = r.suggestions.find((s) => s.ruleId === 'R10') ?? (await waitFor(() => t.d.pipeline.visibleFor('plan-1')));
+    // D-22: R10 ya puede haberse publicado al arrancar (evaluación de cuenta sin eventos de sesión).
+    const r10 = r.suggestions.find((s) => s.ruleId === 'R10') ?? (await waitFor(() => t.d.pipeline.visibleFor('account:anthropic')));
     expect(r10.ruleId).toBe('R10');
     expect(r10.severity).toBe('critical');
     // la config visible del usuario no cambia (el plan % es interno del motor)

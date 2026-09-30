@@ -42,16 +42,20 @@ describe('D-1: R10 de cuenta no tapa a R1 (con plan-usage real simulado)', () =>
     dirs.push(dir);
     const t = await daemon({ env: { ...process.env, CONTEXTPILOT_PLAN_USAGE_FILE: hotPlanUsage(dir) } });
     const c = await wsClient(t.base, t.token);
-    await c.next((m) => m.type === 'hello');
+    const hello = await c.next((m) => m.type === 'hello');
     for (let i = 0; i < 50; i++) {
       const sid = `D1-${i}`;
       const p = c.next((m) => m.type === 'suggestion' && m.data.sessionId === sid && m.data.ruleId === 'R1', 2000);
       await t.api('/ingest/events', { method: 'POST', json: [big(sid)] });
       expect((await p).data.severity).toBe('warn');
     }
-    const r10 = c.msgs.filter((m) => m.type === 'suggestion' && m.data.ruleId === 'R10');
-    expect(r10).toHaveLength(1);
-    expect(r10[0].data.sessionId).toBe('account:anthropic');
+    // D-22: R10 se evalúa también al arrancar (plan-usage caliente): puede llegar en el hello o por WS,
+    // pero es UNA sola sugerencia (mismo id aunque se renueve).
+    const r10 = [...(hello.data.suggestions as Suggestion[]), ...c.msgs.filter((m) => m.type === 'suggestion').map((m) => m.data as Suggestion)].filter(
+      (s) => s.ruleId === 'R10',
+    );
+    expect(new Set(r10.map((s) => s.id)).size).toBe(1);
+    expect(r10[0]!.sessionId).toBe('account:anthropic');
     // /account y statusline muestran el aviso de cuenta aparte.
     const acc = (await (await t.api('/account')).json()) as { suggestions: Suggestion[] };
     expect(acc.suggestions.map((s) => s.ruleId)).toEqual(['R10']);
@@ -147,11 +151,19 @@ describe('D-5: ritmo y proyección expuestos', () => {
       json: { plans: [{ provider: 'anthropic', kind: 'subscription', windows: [{ hours: 5, limit: 2_000_000 }, { days: 7, limit: 50_000_000 }] }] },
     });
     for (let i = 0; i < 3; i++) await t.api('/ingest/events', { method: 'POST', json: [big('B1', { ts: new Date(Date.now() - (2 - i) * MIN).toISOString() })] });
-    const views = (await (await t.api('/sessions?active=true')).json()) as { sessionId: string; burn: { tokensPerMin: number } }[];
-    expect(views.find((v) => v.sessionId === 'B1')!.burn.tokensPerMin).toBe(Math.round((3 * 130_000) / 15));
-    const stats = (await (await t.api('/stats')).json()) as { burn: { provider: string; tokensPerMin: number; projections: { window: string; pct: number }[]; source: string }[] };
+    const views = (await (await t.api('/sessions?active=true')).json()) as { sessionId: string; burn: { tokensPerMin: number; rawTokensPerMin: number } }[];
+    // D-21: efectivos = input + cacheWrite + output + 0,1 × cacheRead = 100 + 0 + 100 + 12 980 por llamada.
+    const b1 = views.find((v) => v.sessionId === 'B1')!.burn;
+    expect(b1.tokensPerMin).toBe(Math.round((3 * 13_180) / 15));
+    expect(b1.rawTokensPerMin).toBe(Math.round((3 * 130_000) / 15));
+    const stats = (await (await t.api('/stats')).json()) as {
+      burn: { provider: string; tokensPerMin: number; rawTokensPerMin: number; projections: { window: string; pct: number; used: number }[]; source: string }[];
+    };
     const a = stats.burn.find((b) => b.provider === 'anthropic')!;
-    expect(a.tokensPerMin).toBeGreaterThan(0);
+    expect(a.tokensPerMin).toBe(Math.round((3 * 13_180) / 15));
+    expect(a.rawTokensPerMin).toBe(Math.round((3 * 130_000) / 15));
+    // La serie local de R10 también es de tokens efectivos.
+    expect(a.projections[0]!.used).toBeCloseTo(3 * 13_180, 5);
     expect(a.source).toBe('local');
     expect(a.projections.map((p) => p.window)).toEqual(['5h', '168h']);
     expect(a.projections[0]!.pct).toBeGreaterThan(0);

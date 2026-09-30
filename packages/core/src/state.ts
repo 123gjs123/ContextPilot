@@ -1,5 +1,5 @@
 import { updateCentroid } from './embed.js';
-import { pushBurnSample, sessionBurn, type Burn } from './projection.js';
+import { effectiveTokens, pushBurnSample, rawTokens, sessionBurn, type Burn } from './projection.js';
 import type { SessionState, TurnEvent } from './types.js';
 
 // RF-EST-01: estado por sesión. applyEvent es pura: devuelve un estado nuevo.
@@ -103,7 +103,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
   s.totals.cacheWrite += e.tokens.cacheWrite ?? 0;
   s.totals.reasoning += e.tokens.reasoning ?? 0;
   s.lastOutputTokens = e.tokens.output;
-  pushBurnSample(s, Date.parse(e.ts), promptTotal(e) + e.tokens.output);
+  pushBurnSample(s, Date.parse(e.ts), effectiveTokens(e.tokens), rawTokens(e.tokens));
   if (e.promptTokens !== undefined) s.lastPromptTokens = e.promptTokens;
 
   const ratio = cacheRatio(e);
@@ -151,7 +151,7 @@ function applySidechain(prev: SessionState | undefined, e: TurnEvent): SessionSt
   s.totals.cacheRead += e.tokens.cacheRead ?? 0;
   s.totals.cacheWrite += e.tokens.cacheWrite ?? 0;
   s.totals.reasoning += e.tokens.reasoning ?? 0;
-  pushBurnSample(s, Date.parse(e.ts), promptTotal(e) + e.tokens.output);
+  pushBurnSample(s, Date.parse(e.ts), effectiveTokens(e.tokens), rawTokens(e.tokens));
   for (const tc of e.toolCalls ?? []) {
     s.recentToolCalls.push({ ...tc, ts: tc.ts ?? e.ts });
     s.toolLastUsedTurn[tc.name] = s.turns;

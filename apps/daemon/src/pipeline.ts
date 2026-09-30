@@ -33,6 +33,7 @@ const R2_MARGIN_MS = 1000;
 const R2_STALE_MS = 30 * 60_000;
 const R2_SOURCES: Source[] = ['claude-code', 'codex', 'gemini-cli', 'proxy'];
 const USAGE_LOOKBACK_MS = 24 * 3_600_000;
+const PROVIDERS: Provider[] = ['anthropic', 'openai', 'google'];
 /** D-11: ventana del índice de adjuntos por sitio (CP-017.2). */
 export const ATTACHMENT_WINDOW_MS = 7 * 86_400_000;
 const ATTACHMENT_MAX_PER_HASH = 20;
@@ -51,7 +52,11 @@ export interface PipelineHooks {
 export type ClearedReason = Feedback | 'expired';
 
 export interface IngestOptions {
-  /** Reprocesamiento al arrancar: se evalúa con el reloj del evento y sólo se publican sugerencias aún vigentes. */
+  /**
+   * Reprocesamiento al arrancar: sólo reconstruye estado. D-19: las reglas se evalúan en seco (sin
+   * cooldowns, lugar visible ni publicación): antes, una R10 «disparada» en el pasado y descartada por
+   * vencida dejaba el cooldown de la cuenta fijado y silenciaba la R10 real durante ~1 h.
+   */
   replay?: boolean;
 }
 
@@ -91,7 +96,11 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     engine.loadDismissStreaks(storage.getSetting<Record<string, number>>('dismissStreaks') ?? {});
     const now = Date.now();
     for (const s of storage.loadSessions(now - USAGE_LOOKBACK_MS)) this.sessions.set(s.sessionId, s);
-    for (const s of storage.openSuggestions(now)) this.track(s);
+    for (const s of storage.openSuggestions(now)) {
+      this.track(s);
+      // La vigente persistida recupera su lugar visible y el cooldown en el motor (sin duplicarla).
+      engine.restore(s, now);
+    }
     for (const s of this.sessions.values()) this.scheduleR2(s);
   }
 
@@ -171,12 +180,20 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
       const phase = e.phase ?? 'response';
       const skipRules = phase === 'prompt' && prev && this.r2Fired.get(e.sessionId) === prev.lastTurnAt ? ['R2'] : undefined;
       if (phase === 'response') this.r2Fired.delete(e.sessionId);
-      const out = this.engine.evaluate({ event: e, prev, state, now, usageWindow: this.usageWindow(e), siteAttachmentCounts, skipRules });
-      for (const s of out.published) {
-        if (opts.replay && Date.parse(s.expiresAt) <= Date.now()) continue;
-        const shown = this.publish(s, e.source);
-        published.push(shown);
-      }
+      const out = this.engine.evaluate({
+        event: e,
+        prev,
+        state,
+        now,
+        usageWindow: this.usageWindow(e),
+        siteAttachmentCounts,
+        skipRules,
+        dryRun: opts.replay,
+      });
+      // D-19: en replay lo evaluado se descarta (el motor no fijó nada); se publica desde el vivo.
+      if (opts.replay) continue;
+      for (const s of out.published) published.push(this.publish(s, e.source));
+      for (const s of out.refreshed ?? []) this.refresh(s);
     }
     for (const id of touched) {
       const s = this.sessions.get(id)!;
@@ -251,6 +268,39 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     if (exact) return exact;
     const longest = Math.max(plan.windowMs ?? 0, ...planWindows(plan).map((w) => w.ms), USAGE_LOOKBACK_MS);
     return { provider, points: this.storage.usagePoints(provider, nowMs - longest) };
+  }
+
+  /**
+   * D-22: reglas de cuenta (R10) sin depender de eventos de sesión: el daemon la llama cada 60 s, al
+   * cambiar plan-usage y al terminar el escaneo inicial. Publica, renueva o retira la de cada proveedor.
+   */
+  evaluateAccounts(now = Date.now()): Suggestion[] {
+    if (this.disposed) return [];
+    const published: Suggestion[] = [];
+    for (const provider of PROVIDERS) {
+      if (!this.engine.planFor(provider)) continue;
+      const out = this.engine.evaluateAccount({ provider, now, usageWindow: this.usageWindowFor(provider, now) });
+      for (const s of out.published) published.push(this.publish(s));
+      for (const s of out.refreshed) this.refresh(s);
+      for (const s of out.cleared) this.clearResolved(s);
+    }
+    return published;
+  }
+
+  /** D-22: la sugerencia de cuenta sigue vigente: mismo id, vencimiento y texto nuevos; se re-difunde. */
+  private refresh(s: Suggestion): void {
+    if (!this.storage.refreshSuggestion(s)) return;
+    this.untrack(s.id);
+    this.track(s);
+    this.emit('suggestion', s);
+  }
+
+  /** D-22: la proyección dejó de cumplirse: la sugerencia de cuenta se retira (como vencida). */
+  private clearResolved(s: Suggestion): void {
+    const cur = this.storage.getSuggestion(s.id);
+    if (!cur || cur.feedback || (cur.status && cur.status !== 'open')) return;
+    this.untrack(s.id);
+    this.expire(s);
   }
 
   /** Publica y devuelve la versión que ven las UIs (con foco efímero si aplica). */

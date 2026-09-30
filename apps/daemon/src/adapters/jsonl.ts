@@ -11,6 +11,9 @@ export interface LineParser {
   feed(line: string): TurnEvent[];
   formatVersions?: Set<string>;
   errors?: number;
+  /** D-16: registros descartados por formato desconocido y detalle del último (health `error`). */
+  formatErrors?: number;
+  formatIssue?: string;
   sessionId?: string;
   /** D-2: foco en memoria para `/compact <foco>` (sólo Claude Code). */
   focus?(): string | undefined;
@@ -105,8 +108,10 @@ export class JsonlAdapter {
     }
     const events: TurnEvent[] = [];
     let batchErrors = 0;
+    let formatIssue: string | undefined;
     for (const line of lines) {
       const before = p.errors ?? 0;
+      const formatBefore = p.formatErrors ?? 0;
       let evs: TurnEvent[] = [];
       try {
         evs = p.feed(line);
@@ -115,7 +120,11 @@ export class JsonlAdapter {
         this.o.health.lineError(this.o.name, `el parser lanzó: ${(e as Error).message}`);
         continue;
       }
-      if ((p.errors ?? 0) > before) {
+      if ((p.formatErrors ?? 0) > formatBefore) {
+        // D-16 / CP-027.3: formato desconocido → error en el acto (no 3 seguidas): no hay cifras confiables.
+        batchErrors++;
+        formatIssue = p.formatIssue ?? 'formato desconocido';
+      } else if ((p.errors ?? 0) > before) {
         batchErrors++;
         this.o.health.lineError(this.o.name, 'líneas JSONL inválidas');
       }
@@ -130,6 +139,12 @@ export class JsonlAdapter {
         this.o.storage.setTranscript(sid, file, this.o.name);
         this.registered.add(file);
       }
+    }
+    if (formatIssue) {
+      const v = p.formatVersions ? [...p.formatVersions].at(-1) : undefined;
+      const cur = this.o.health.get(this.o.name);
+      if (cur?.status !== 'error' || cur.detail !== formatIssue) this.o.log.warn(`${this.o.name}: ${formatIssue}`);
+      this.o.health.set(this.o.name, { status: 'error', detail: formatIssue, ...(v ? { formatVersion: v } : {}) });
     }
     if (mode === 'warm' || !events.length) return;
     this.o.pipeline.ingest(events, { replay: mode === 'replay' });

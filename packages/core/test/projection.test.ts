@@ -52,7 +52,9 @@ describe('proyección con agotamiento conocido (CP-018.3 literal)', () => {
       const now = w.start + h * H;
       const seen = w.samples.filter((s) => s.t <= now);
       const points = seen.map((s, i) => ({ ts: s.t, tokens: i === 0 ? s.pct : s.pct - seen[i - 1]!.pct }));
-      const p = projectWindow(points, spec, now, R10.defaults.rateWindowMin! * MIN);
+      // Ronda 2 (D-5): con la amortiguación de R10 (×0,6) el ritmo constante del fixture se subestima,
+      // pero el error sigue < 20 % (medido: 12,4 %, 11,7 %, 4,0 %).
+      const p = projectWindow(points, spec, now, R10.defaults.rateWindowMin! * MIN, R10.defaults.rateDamping);
       expect(p?.exhaustAt, `checkpoint ${h} h`).toBeDefined();
       expect(Math.abs(p!.exhaustAt! - T) / (5 * H), `checkpoint ${h} h`).toBeLessThan(0.2);
     }

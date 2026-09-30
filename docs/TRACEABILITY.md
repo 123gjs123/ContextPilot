@@ -1,7 +1,7 @@
 # Trazabilidad — requerimiento → historias → tests
 
 Fuente: [SPEC.md](SPEC.md) · [BACKLOG.md](BACKLOG.md) · verificación: [ACCEPTANCE.md](ACCEPTANCE.md). Actualizado: 2026-09-30, **ronda 2** (commit `7f00517`; ronda 1 en `5b805e3`).
-Columna **Tests / archivos**: rutas abreviadas — `core/` = `packages/core/test/`, `daemon/` = `apps/daemon/test/`, `desktop/` = `apps/desktop/test/`, `ext/` = `apps/extension/test/`, `scripts/test/` (fuera de `npm test` hasta D-20; se corren con `npx vitest run --config scripts/verify/vitest.scripts.config.ts`), `verify/` = `scripts/verify/`. Estado por criterio en ACCEPTANCE.md §2 (ronda 1) y §7.3 (ronda 2).
+Columna **Tests / archivos**: rutas abreviadas — `core/` = `packages/core/test/`, `daemon/` = `apps/daemon/test/`, `desktop/` = `apps/desktop/test/`, `ext/` = `apps/extension/test/`, `scripts/test/` (incluidos en `npm test` desde D-20), `verify/` = `scripts/verify/`. Estado por criterio en ACCEPTANCE.md §2 (ronda 1) y §7.3 (ronda 2).
 Columna **Estado**: ✓ cumplido con evidencia · ◐ parcial · ✗ falta · ⏸ requiere paso MANUAL/humano.
 
 ## Requerimientos funcionales
@@ -112,5 +112,5 @@ Columna **Estado**: ✓ cumplido con evidencia · ◐ parcial · ✗ falta · �
 - **Criterios implementados pero sin test:** CP-018.4 (rama USD de R10), CP-037.2 (`chrome.*` del SW), CP-049.2 (toggles), CP-050.2 (panel de salud).
 - **Criterios sin implementación:** CP-019.4 (`transformers.js`, H-8), CP-027.3 / CP-030.5 (versión desconocida / campos faltantes → `error`), CP-016.1 (`tier` configurable).
 - **Criterio que pasa en test y falla en producción:** CP-018.2 (D-19).
-- **Scripts de verificación de la aceptación:** `verify/no-native.mjs` (CP-001.3), `verify/no-autosend.mjs` (CP-058.2), `verify/real-transcripts-usage.ts` (CP-030.4/.6), `verify/estimator-abs.ts` (CP-005.3), **ronda 2:** `verify/r10-replay-cooldown.ts` (CP-018.2, D-19), `verify/vitest.scripts.config.ts` (corre `scripts/test/**`, D-20).
+- **Scripts de verificación de la aceptación:** `verify/no-native.mjs` (CP-001.3), `verify/no-autosend.mjs` (CP-058.2), `verify/real-transcripts-usage.ts` (CP-030.4/.6), `verify/estimator-abs.ts` (CP-005.3), **ronda 2:** `verify/r10-replay-cooldown.ts` (CP-018.2, D-19) (`verify/vitest.scripts.config.ts` se eliminó: con D-20 el `vitest.config.ts` raíz corre `scripts/test/**`).
 - **Bloqueos de entorno / humanos:** login de Codex y Gemini (CP-033.5, CP-034.5); Claude Desktop rechaza CDP (CP-043, H-1); ChatGPT Desktop no instalado (CP-044); extensión sin aprobación IT (H-4).

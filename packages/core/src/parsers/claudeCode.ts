@@ -20,6 +20,19 @@ import { splitBlocks } from './blocks.js';
 // - D-2 (R1): archivos y herramientas de los últimos 5 prompts, sólo en memoria, para el foco de
 //   `/compact <foco>`. Nunca se emite en eventos ni se persiste.
 
+/**
+ * D-16 / CP-027.3: versiones de Claude Code cuyo formato de transcript se conoce (mayor 1 y 2; en
+ * los transcripts reales de la aceptación: 2.1.179 … 2.1.285). Fuera de este rango el parser no
+ * emite cifras y el adaptador pasa a `error`.
+ */
+export const CLAUDE_CODE_KNOWN_MAJORS: readonly number[] = [1, 2];
+
+/** D-16: la versión del registro es conocida (`<mayor>.<menor>.<parche>` con mayor en rango). */
+export function isKnownClaudeCodeVersion(v: string): boolean {
+  const m = /^(\d+)\.\d+\.\d+/.exec(v);
+  return !!m && CLAUDE_CODE_KNOWN_MAJORS.includes(Number(m[1]));
+}
+
 /** Herramientas que no dicen nada del foco del trabajo. */
 const FOCUS_IGNORED_TOOLS = new Set(['TodoWrite', 'ToolSearch', 'TaskOutput', 'TaskStop', 'SubagentHandback']);
 const FOCUS_TURNS = 5;
@@ -65,6 +78,13 @@ export class ClaudeCodeParser {
   private windowFloor = 0;
   sessionId?: string;
   errors = 0;
+  /**
+   * D-16 / CP-027.3 / CP-030.5: registros descartados por formato desconocido (versión fuera de rango
+   * o llamada sin `message.usage` con `input_tokens`/`output_tokens` numéricos). No emiten cifras.
+   */
+  formatErrors = 0;
+  /** D-16: detalle del último problema de formato (para health). */
+  formatIssue?: string;
   /** D-4: nombre de herramienta diferida → tokens estimados de su línea en el listado. */
   private deferred = new Map<string, number>();
   /** D-4: definiciones completas cargadas (ToolSearch) → tokens estimados. */
@@ -171,8 +191,18 @@ export class ClaudeCodeParser {
       this.errors++;
       return [];
     }
-    if (rec.version) this.formatVersions.add(String(rec.version));
+    if (rec.version) {
+      const v = String(rec.version);
+      this.formatVersions.add(v);
+      if (!isKnownClaudeCodeVersion(v)) {
+        // D-16: formato no verificado: se descarta el registro entero (nunca cifras parciales).
+        return this.formatError(`versión de formato desconocida: ${v.slice(0, 32)} (conocidas: ${CLAUDE_CODE_KNOWN_MAJORS.join('.x, ')}.x)`);
+      }
+    }
     if (rec.sessionId) this.sessionId = rec.sessionId;
+    if (rec.type === 'assistant' && rec.message && rec.message.model !== '<synthetic>' && !validUsage(rec.message)) {
+      return this.formatError('llamada sin message.id o message.usage con input_tokens/output_tokens numéricos');
+    }
     if (rec.type === 'attachment' && !rec.isSidechain && !this.opts.sidechain) {
       this.onAttachment(rec.attachment);
       return [];
@@ -180,6 +210,12 @@ export class ClaudeCodeParser {
     if (rec.isSidechain || this.opts.sidechain) return this.onSidechain(rec);
     if (rec.type === 'user') return this.onUser(rec);
     if (rec.type === 'assistant') return this.onAssistant(rec);
+    return [];
+  }
+
+  private formatError(detail: string): TurnEvent[] {
+    this.formatErrors++;
+    this.formatIssue = detail;
     return [];
   }
 
@@ -364,6 +400,21 @@ export class ClaudeCodeParser {
       },
     ];
   }
+}
+
+/**
+ * D-16 / CP-030.5: forma mínima de una llamada con uso: `message.id` y `message.usage` con
+ * `input_tokens` y `output_tokens` numéricos (los de caché son opcionales, pero numéricos si están).
+ * Un registro `assistant` con contenido y sin nada de esto es un cambio de formato, no una llamada vacía.
+ */
+function validUsage(msg: any): boolean {
+  const u = msg.usage;
+  if (typeof msg.id !== 'string' || !msg.id || !u || typeof u !== 'object') return false;
+  if (typeof u.input_tokens !== 'number' || typeof u.output_tokens !== 'number') return false;
+  for (const k of ['cache_read_input_tokens', 'cache_creation_input_tokens']) {
+    if (u[k] !== undefined && u[k] !== null && typeof u[k] !== 'number') return false;
+  }
+  return true;
 }
 
 export function textOf(content: unknown): string {

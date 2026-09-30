@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { aggregateTeam, projectPlan, RuleEngine, type AdapterHealth, type Projection, type Provider } from '@contextpilot/core';
+import { aggregateTeam, projectPlan, R10, RuleEngine, type AdapterHealth, type Projection, type Provider } from '@contextpilot/core';
 import { createClaudeCodeAdapter, createCodexAdapter, defaultClaudeProjectsDir, defaultCodexSessionsDir } from './adapters/cli.js';
 import { GeminiAdapter } from './adapters/gemini.js';
 import { configuredMcpServers } from './adapters/mcpConfig.js';
@@ -32,14 +32,21 @@ import { Storage } from './storage.js';
 export const VERSION = '0.1.0';
 const DAY = 86_400_000;
 const BURN_MS = 15 * 60_000;
+/** D-22: cada cuánto se reevalúan las reglas de cuenta (R10) sin depender de eventos de sesión. */
+const ACCOUNT_EVAL_MS = 60_000;
 const PROVIDERS: Provider[] = ['anthropic', 'openai', 'google'];
 
 /** D-5: ritmo y proyección por proveedor (GET /stats `burn`, GET /account). */
 export interface ProviderBurn {
   provider: Provider;
-  /** Tokens por minuto de todas las sesiones del proveedor, media móvil de 15 min (CP-018.1). */
+  /**
+   * Tokens efectivos por minuto de todas las sesiones del proveedor, media móvil de 15 min (CP-018.1).
+   * D-21: input + cacheWrite + output + 0,1 × cacheRead.
+   */
   tokensPerMin: number;
   tokensPerHour: number;
+  /** D-21: lo mismo sin ponderar la lectura de caché (transparencia). */
+  rawTokensPerMin: number;
   /** Proyección contra las ventanas del plan (unidades del plan: tokens o % si viene de plan-usage). */
   projections: Projection[];
   /** 'plan-usage' = serie exacta de Claude Desktop; 'local' = turnos observados por ContextPilot. */
@@ -60,6 +67,8 @@ export interface DaemonOptions {
   rootRetryMs?: number;
   /** Sin archivo de log (tests). */
   quiet?: boolean;
+  /** Tests (D-22): intervalo de la evaluación de reglas de cuenta. */
+  accountEvalMs?: number;
   /** Tests (D-10): extractor de uso del proxy reemplazable. */
   proxyExtractorFor?: ProxyOptions['extractorFor'];
   echoLog?: boolean;
@@ -84,6 +93,7 @@ export class Daemon {
   planUsage: PlanUsageAdapter | null = null;
   private geminiPath = '';
   private retentionTimer: NodeJS.Timeout | null = null;
+  private accountTimer: NodeJS.Timeout | null = null;
   private env: NodeJS.ProcessEnv;
   private closeWss: () => void = () => {};
   readonly handoffCwd: string;
@@ -157,6 +167,21 @@ export class Daemon {
     this.refreshSecurityHealth();
     this.refreshR6Health();
     this.reconcileAdapters();
+    // D-22: R10 (cuenta) se evalúa también por tiempo: con uso sólo en Desktop/web, plan-usage avanza
+    // sin eventos de sesión. Primera evaluación al terminar el escaneo inicial (replay en seco, D-19).
+    this.accountTimer = setInterval(() => this.evaluateAccounts(), this.o.accountEvalMs ?? ACCOUNT_EVAL_MS);
+    this.accountTimer.unref();
+    void this.ready().then(() => this.evaluateAccounts());
+  }
+
+  /** D-22: reevalúa las reglas de cuenta de todos los proveedores con plan. */
+  evaluateAccounts(): void {
+    if (!this.pipeline || !this.storage) return;
+    try {
+      this.pipeline.evaluateAccounts();
+    } catch (e) {
+      this.log.warn(`evaluación de reglas de cuenta: ${(e as Error).message}`);
+    }
   }
 
   /** D-9: sin `allowedExtensionIds`, cualquier extensión con el token es aceptada: aviso en log y health. */
@@ -196,15 +221,21 @@ export class Daemon {
     for (const provider of PROVIDERS) {
       const recent = this.storage.usagePoints(provider, now - BURN_MS);
       const tokens = recent.reduce((s, p) => s + p.tokens, 0);
+      const raw = recent.reduce((s, p) => s + p.raw, 0);
       const plan = this.pipeline.engine.planFor(provider);
       const series = this.pipeline.usageWindowFor(provider, now);
-      const projections = series ? projectPlan(plan, (k) => series.byWindow?.[k] ?? series.points, now) : [];
+      // Misma ventana de ritmo y amortiguación que R10 (D-5): /account y la sugerencia coinciden.
+      const th = this.pipeline.engine.thresholdsFor(R10, provider);
+      const projections = series
+        ? projectPlan(plan, (k) => series.byWindow?.[k] ?? series.points, now, (th.rateWindowMin ?? 60) * 60_000, th.rateDamping)
+        : [];
       if (!tokens && !projections.length) continue;
       const fromPlanUsage = provider === 'anthropic' && !!this.planUsage?.fresh(now);
       out.push({
         provider,
         tokensPerMin: Math.round(tokens / 15),
         tokensPerHour: Math.round(tokens * 4),
+        rawTokensPerMin: Math.round(raw / 15),
         projections,
         source: projections.length ? (fromPlanUsage ? 'plan-usage' : 'local') : 'none',
       });
@@ -265,6 +296,7 @@ export class Daemon {
         log: this.log,
         env: this.env,
         onChange: () => this.pipeline.engine.setConfig(this.effectiveConfig()),
+        onSamples: () => this.evaluateAccounts(),
       });
       this.planUsage.start();
     } else if (!on('claude-plan-usage') && this.planUsage) {
@@ -389,6 +421,8 @@ export class Daemon {
     this.claude = this.codex = null;
     this.gemini = null;
     if (this.retentionTimer) clearInterval(this.retentionTimer);
+    if (this.accountTimer) clearInterval(this.accountTimer);
+    this.accountTimer = null;
     this.pipeline?.dispose();
     this.health.dispose();
     this.proxy?.close();

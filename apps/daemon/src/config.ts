@@ -96,6 +96,14 @@ export function validateConfigPatch(p: unknown): string | null {
       if (typeof v !== 'boolean') return `storeContent.${s}: booleano`;
     }
   }
+  if (c.modelTiers !== undefined) {
+    // D-14 / CP-016.1: nivel de modelo configurable.
+    if (typeof c.modelTiers !== 'object' || c.modelTiers === null || Array.isArray(c.modelTiers)) return 'modelTiers: objeto';
+    for (const [m, t] of Object.entries(c.modelTiers)) {
+      if (!m.trim()) return 'modelTiers: clave vacía';
+      if (t !== 'top' && t !== 'mid' && t !== 'small') return `modelTiers.${m}: 'top' | 'mid' | 'small'`;
+    }
+  }
   if (c.maxVisiblePerSession !== undefined && !(Number.isInteger(c.maxVisiblePerSession) && c.maxVisiblePerSession >= 1)) {
     return 'maxVisiblePerSession: entero >= 1';
   }

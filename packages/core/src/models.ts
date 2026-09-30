@@ -1,4 +1,4 @@
-import type { Provider, WindowSource } from './types.js';
+import type { ModelTier, Provider, WindowSource } from './types.js';
 
 // Ventanas de contexto y nivel de modelo por familia. Valores por defecto; se matchea por regex
 // sobre el id de modelo.
@@ -7,7 +7,7 @@ interface ModelInfo {
   match: RegExp;
   provider: Provider;
   contextWindow: number;
-  tier: 'top' | 'mid' | 'small';
+  tier: ModelTier;
   /** Tramos de precio por tamaño de prompt en tokens (G1). */
   priceTiers?: number[];
 }
@@ -42,8 +42,26 @@ export function contextWindowFor(model: string, provider: Provider): number {
   return modelInfo(model, provider).contextWindow;
 }
 
-export function isTopTier(model: string, provider: Provider): boolean {
-  return modelInfo(model, provider).tier === 'top';
+/**
+ * D-14 / CP-016.1: nivel del modelo. `overrides` (config `modelTiers`): id exacto primero; si no, el
+ * fragmento más largo contenido en el id (sin distinguir mayúsculas); si no, la tabla.
+ */
+export function modelTier(model: string, provider: Provider, overrides?: Record<string, ModelTier>): ModelTier {
+  if (overrides) {
+    const exact = overrides[model];
+    if (exact) return exact;
+    const id = model.toLowerCase();
+    let best: string | undefined;
+    for (const k of Object.keys(overrides)) {
+      if (k && id.includes(k.toLowerCase()) && (!best || k.length > best.length)) best = k;
+    }
+    if (best) return overrides[best]!;
+  }
+  return modelInfo(model, provider).tier;
+}
+
+export function isTopTier(model: string, provider: Provider, overrides?: Record<string, ModelTier>): boolean {
+  return modelTier(model, provider, overrides) === 'top';
 }
 
 export function smallerModelFor(provider: Provider): string {

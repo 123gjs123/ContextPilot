@@ -13,9 +13,31 @@ const PROVIDER_FACTOR: Record<Provider, number> = {
 const TOKEN_RE =
   /([぀-ヿ㐀-鿿가-힯])|([A-Za-zÀ-ÿ]+)|(\d+)|(\s+)|([^\sA-Za-z\d])/g;
 
+/**
+ * D-23: URLs y corridas alfanuméricas largas con letras y dígitos (hashes, ids, base64) se cobran por
+ * longitud: el tokenizer las parte en trozos de ~3 caracteres, mientras que el conteo por palabras de
+ * abajo las parte en muchos segmentos de 1 token (sobreestimaba +17 % en un listado de URLs real).
+ * Calibrado con `tool_result` reales (delta de contexto entre llamadas): mediana +24,5 % → +0,6 % en
+ * salidas con URLs/hashes, sin cambios en `scripts/verify-estimator.ts` (ver DECISIONS «estimador URLs»).
+ */
+const LONG_RUN_RE = /https?:\/\/[^\s"'<>)\]]+|[A-Za-z0-9_\-+/=]{16,}/g;
+const LONG_RUN_CHARS_PER_TOKEN = 3;
+
 export function estimateTokens(text: string, provider: Provider = 'anthropic'): number {
   if (!text) return 0;
   let tokens = 0;
+  if (text.length >= 16) {
+    let runs = 0;
+    const rest = text.replace(LONG_RUN_RE, (m) => {
+      if (!/^https?:\/\//.test(m) && !(/\d/.test(m) && /[A-Za-z]/.test(m))) return m;
+      runs += m.length;
+      return ' ';
+    });
+    if (runs) {
+      tokens += runs / LONG_RUN_CHARS_PER_TOKEN;
+      text = rest;
+    }
+  }
   const re = new RegExp(TOKEN_RE.source, 'g');
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {

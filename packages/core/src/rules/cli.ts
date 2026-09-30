@@ -188,8 +188,9 @@ export const R7: Rule = {
   defaults: { promptTokens: 200, outputTokens: 500, maxContext: 30_000 },
   defaultCooldownMs: 60 * MIN,
   on: ['response'],
-  evaluate({ event, state, thresholds }) {
-    if (!isTopTier(event.model, event.provider)) return null;
+  evaluate({ event, state, thresholds, modelTiers }) {
+    // D-14: el nivel respeta los overrides de la config (`modelTiers`).
+    if (!isTopTier(event.model, event.provider, modelTiers)) return null;
     // En sesiones grandes cambiar de modelo invalida la caché: el consejo sería contraproducente.
     if (state.contextSize > thresholds.maxContext!) return null;
     const p = event.promptTokens ?? state.lastPromptTokens;
