@@ -271,6 +271,8 @@ export interface RequestInfo {
   toolsDeclared: DeclaredTool[];
   systemHash?: string;
   firstUserHash?: string;
+  /** D-4: herramientas invocadas en el último mensaje del asistente del historial (uso para R6). */
+  toolsUsed?: string[];
 }
 
 function textDeep(x: unknown): string {
@@ -315,6 +317,10 @@ export function requestInfo(provider: Provider, body: unknown, opts: { url?: str
     firstUser = textDeep(msgs.find((m) => m?.role === 'user')?.content);
     all = [system, ...msgs.map((m) => textDeep(m?.content))].join('\n');
     for (const t of Array.isArray(b.tools) ? b.tools : []) out.toolsDeclared.push(tool(String(t?.name ?? t?.type ?? 'tool'), t, provider));
+    const lastAsst = [...msgs].reverse().find((m) => m?.role === 'assistant');
+    out.toolsUsed = (Array.isArray(lastAsst?.content) ? lastAsst.content : [])
+      .filter((c: any) => c?.type === 'tool_use' && typeof c.name === 'string')
+      .map((c: any) => c.name as string);
   } else if (provider === 'openai') {
     out.model = typeof b.model === 'string' ? b.model : undefined;
     if (Array.isArray(b.messages)) {
@@ -323,6 +329,10 @@ export function requestInfo(provider: Provider, body: unknown, opts: { url?: str
       system = msgs.filter((m) => m?.role === 'system' || m?.role === 'developer').map((m) => textDeep(m.content)).join('\n');
       firstUser = textDeep(msgs.find((m) => m?.role === 'user')?.content);
       all = msgs.map((m) => textDeep(m?.content)).join('\n');
+      const lastAsst = [...msgs].reverse().find((m) => m?.role === 'assistant');
+      out.toolsUsed = (Array.isArray(lastAsst?.tool_calls) ? lastAsst.tool_calls : [])
+        .map((c: any) => c?.function?.name)
+        .filter((n: unknown): n is string => typeof n === 'string');
     } else {
       // Responses API: instructions + input (string o lista de ítems)
       system = typeof b.instructions === 'string' ? b.instructions : '';
@@ -331,6 +341,14 @@ export function requestInfo(provider: Provider, body: unknown, opts: { url?: str
       if (sys.length) system = [system, ...sys].filter(Boolean).join('\n');
       firstUser = textDeep(input.find((m) => m?.role === 'user')?.content);
       all = [system, ...input.map((m) => textDeep(m?.content ?? m?.output ?? ''))].join('\n');
+      let lastUser = -1;
+      input.forEach((m, i) => {
+        if (m?.role === 'user') lastUser = i;
+      });
+      out.toolsUsed = input
+        .slice(lastUser + 1)
+        .filter((m) => m?.type === 'function_call' && typeof m.name === 'string')
+        .map((m) => m.name as string);
     }
     for (const t of Array.isArray(b.tools) ? b.tools : []) {
       const name = t?.function?.name ?? t?.name ?? t?.type ?? 'tool';
@@ -342,6 +360,10 @@ export function requestInfo(provider: Provider, body: unknown, opts: { url?: str
     const contents: any[] = Array.isArray(b.contents) ? b.contents : [];
     firstUser = textDeep(contents.find((c) => (c?.role ?? 'user') === 'user'));
     all = [system, ...contents.map((c) => textDeep(c))].join('\n');
+    const lastModel = [...contents].reverse().find((c) => c?.role === 'model');
+    out.toolsUsed = (Array.isArray(lastModel?.parts) ? lastModel.parts : [])
+      .map((p: any) => p?.functionCall?.name)
+      .filter((n: unknown): n is string => typeof n === 'string');
     for (const t of Array.isArray(b.tools) ? b.tools : []) {
       const decls = t?.functionDeclarations ?? t?.function_declarations;
       if (Array.isArray(decls)) for (const d of decls) out.toolsDeclared.push(tool(String(d?.name ?? 'function'), d, provider));
@@ -349,6 +371,7 @@ export function requestInfo(provider: Provider, body: unknown, opts: { url?: str
     }
   }
 
+  if (!out.toolsUsed?.length) delete out.toolsUsed;
   const toolTokens = out.toolsDeclared.reduce((s, t) => s + t.definitionTokens, 0);
   out.promptTokensEstimate = (all.trim() ? estimateTokens(all, provider) : 0) + toolTokens;
   const sh = normHash(system);

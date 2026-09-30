@@ -52,6 +52,10 @@ export function upstreamsFromEnv(env: NodeJS.ProcessEnv = process.env): Record<P
 
 export interface ProxyOptions {
   upstreams: Record<Provider, string>;
+  /** Entorno para HTTP(S)_PROXY / NO_PROXY (default process.env). */
+  env?: NodeJS.ProcessEnv;
+  /** Tests (D-10): reemplaza el extractor de uso del core. */
+  extractorFor?: (provider: Provider) => UsageExtractor;
   pipeline: Pipeline;
   health: HealthRegistry;
   log: Logger;
@@ -69,8 +73,16 @@ export class Proxy {
   private dispatcherFor(url: URL): Dispatcher {
     const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]';
     if (loopback) return (this.direct ??= new Agent({ headersTimeout: 600_000, bodyTimeout: 600_000 }));
-    // D «salida del proxy»: respeta HTTPS_PROXY / NO_PROXY; CAs vía NODE_EXTRA_CA_CERTS.
-    return (this.viaEnv ??= new EnvHttpProxyAgent({ headersTimeout: 600_000, bodyTimeout: 600_000 }));
+    // D «salida del proxy»: respeta HTTPS_PROXY / HTTP_PROXY / NO_PROXY del entorno del daemon; CAs vía
+    // NODE_EXTRA_CA_CERTS.
+    const env = this.o.env ?? process.env;
+    return (this.viaEnv ??= new EnvHttpProxyAgent({
+      headersTimeout: 600_000,
+      bodyTimeout: 600_000,
+      httpProxy: env.HTTP_PROXY ?? env.http_proxy,
+      httpsProxy: env.HTTPS_PROXY ?? env.https_proxy,
+      noProxy: env.NO_PROXY ?? env.no_proxy,
+    }));
   }
 
   /** Atiende /proxy/<proveedor><rest> (rest incluye query, tal cual llegó). */
@@ -126,8 +138,11 @@ export class Proxy {
 
     const ok = up.statusCode >= 200 && up.statusCode < 300;
     const tee = ok
-      ? new Tee(provider, firstHeader(up.headers['content-encoding']) ?? '', (m) =>
-          this.o.health.set('proxy', { status: 'error', detail: `extractor: ${m}` }),
+      ? new Tee(
+          provider,
+          firstHeader(up.headers['content-encoding']) ?? '',
+          (m) => this.o.health.set('proxy', { status: 'error', detail: `extractor: ${m}` }),
+          this.o.extractorFor,
         )
       : null;
     try {
@@ -177,6 +192,12 @@ export class Proxy {
         promptHash: info?.firstUserHash ?? '',
         promptTokens: info?.promptTokensEstimate,
         toolsAvailable: info?.toolsDeclared.length ? info.toolsDeclared : undefined,
+        // D-4: herramientas invocadas en el historial del pedido → uso para R6.
+        toolCalls: info?.toolsUsed?.length
+          ? info.toolsUsed.map((name) => ({ name, resultTokens: 0, failed: false, argsHash: '' }))
+          : undefined,
+        // D-14: hash del system prompt para el diff de R3.
+        systemHash: info?.systemHash,
         phase: 'response',
       };
       this.o.pipeline.ingest([ev]);
@@ -193,9 +214,11 @@ export class Proxy {
 }
 
 /** Copia del stream hacia el extractor de uso del core; aislada de la respuesta al cliente. */
+type UsageExtractor = ReturnType<typeof createUsageExtractor>;
+
 class Tee {
   private decoder = new TextDecoder('utf-8');
-  private extractor: ReturnType<typeof createUsageExtractor>;
+  private extractor: UsageExtractor;
   private failed = false;
   private inflater: NodeJS.ReadWriteStream | null = null;
   private inflated: Promise<void> = Promise.resolve();
@@ -204,8 +227,9 @@ class Tee {
     provider: Provider,
     encoding: string,
     private onError: (msg: string) => void,
+    factory?: (provider: Provider) => UsageExtractor,
   ) {
-    this.extractor = createUsageExtractor(provider);
+    this.extractor = (factory ?? createUsageExtractor)(provider);
     const enc = encoding.toLowerCase();
     if (enc === 'gzip' || enc === 'deflate' || enc === 'br') {
       const z = enc === 'gzip' ? createGunzip() : enc === 'br' ? createBrotliDecompress() : createInflate();

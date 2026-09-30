@@ -48,6 +48,8 @@ export interface PanelState {
   health: AdapterHealth[];
   queueSize: number;
   config?: Pick<Config, 'rules'>;
+  /** D-1: aviso de cuenta del proveedor del sitio (R10), aparte de la sugerencia de la conversación. */
+  account?: Suggestion | null;
 }
 
 export interface ConnectionTest {

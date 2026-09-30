@@ -1,0 +1,257 @@
+{
+  "description": "CP-019.2 / D-6: 100 casos sintéticos etiquetados para R4 (tarea nueva). Cada caso = prompts previos de la sesión (contexto) + prompt nuevo + etiqueta same|new. 25 contextos × (2 same + 2 new). En cada contexto: un 'same' fácil (vocabulario compartido), uno difícil (seguimiento parafraseado), un 'new' fácil (otra área) y uno difícil (mismo dominio amplio, otra tarea). Español/inglés mezclados como en sesiones reales de desarrollo.",
+  "contexts": [
+    { "id": "c01", "lang": "es", "prev": [
+      "Revisá el parser de transcripts JSONL de Claude Code: hay líneas con el mismo message.id y el usage se suma dos veces",
+      "Agregá deduplicación por message.id en el parser y un test con dos líneas repetidas del mismo mensaje",
+      "El parser también tiene que adjuntar los tool_result al próximo evento de respuesta, fijate cómo lo hace hoy",
+      "Corré los tests del parser de transcripts y decime qué falla con el fixture sanitizado"
+    ]},
+    { "id": "c02", "lang": "en", "prev": [
+      "My React dashboard component leaks memory, the useEffect subscribes to a websocket and never unsubscribes",
+      "Can you refactor the useEffect so the websocket subscription is cleaned up when the component unmounts",
+      "The chart component still re-renders on every websocket message, can we memoize the data transformation",
+      "Add a React Testing Library test that mounts and unmounts the dashboard and checks the socket is closed"
+    ]},
+    { "id": "c03", "lang": "es", "prev": [
+      "Esta consulta de Postgres sobre la tabla de apuestas tarda 8 segundos, te paso el EXPLAIN ANALYZE",
+      "¿Qué índice compuesto conviene para filtrar apuestas por user_id y created_at ordenadas por fecha?",
+      "Creé el índice pero el planner sigue haciendo seq scan en la tabla de apuestas, ¿por qué?",
+      "Revisá si las estadísticas de la tabla están desactualizadas y si conviene correr ANALYZE"
+    ]},
+    { "id": "c04", "lang": "en", "prev": [
+      "Our Kubernetes deployment for the pricing service is stuck in CrashLoopBackOff after the last release",
+      "Here are the pod logs, the container exits with code 137 right after startup, is it the memory limit?",
+      "Increase the memory limits in the deployment manifest and add a readiness probe for the pricing service",
+      "The pods are running now but the readiness probe fails intermittently, check the probe timeout settings"
+    ]},
+    { "id": "c05", "lang": "es", "prev": [
+      "Los tests de Playwright del login fallan una de cada cinco corridas en CI, parece un problema de timing",
+      "Reemplazá los waitForTimeout del test de login por esperas a que el botón de ingresar esté habilitado",
+      "Agregá un fixture de Playwright que haga el login por API y guarde el storageState para los demás tests",
+      "El test de logout sigue flaky en Firefox, fijate si el selector del menú de usuario es estable"
+    ]},
+    { "id": "c06", "lang": "en", "prev": [
+      "Write a Terraform module that creates an S3 bucket with versioning and server side encryption enabled",
+      "Add a bucket policy to the Terraform module that denies uploads without encryption headers",
+      "The terraform plan wants to recreate the bucket every time, I think the lifecycle block is wrong",
+      "Add outputs for the bucket ARN and name to the S3 Terraform module and update the README example"
+    ]},
+    { "id": "c07", "lang": "es", "prev": [
+      "Armá un middleware de Express que valide el JWT del header Authorization y rechace tokens vencidos",
+      "El middleware de autenticación tiene que leer los roles del JWT y dejarlos en req.user",
+      "Agregá refresh tokens a la API: endpoint POST /auth/refresh que emita un JWT nuevo",
+      "Escribí tests con supertest para el middleware JWT: token válido, vencido y firma inválida"
+    ]},
+    { "id": "c08", "lang": "en", "prev": [
+      "I have a messy CSV of customer transactions, load it with pandas and show me the columns with nulls",
+      "Clean the pandas dataframe: parse the date column, drop duplicate transaction ids and strip whitespace",
+      "Group the transactions by customer and month and compute total amount and number of transactions",
+      "Some amounts are negative refunds, keep them but flag them in a new column before grouping"
+    ]},
+    { "id": "c09", "lang": "es", "prev": [
+      "En docker compose el servicio api no puede conectarse a la base de datos postgres, da connection refused",
+      "Revisá el docker-compose.yml: la api usa localhost como host de la base, ¿no debería usar el nombre del servicio?",
+      "Agregá un healthcheck al servicio postgres en docker compose y que la api espere con depends_on condition",
+      "Ahora la api arranca pero las migraciones corren antes de que la base esté lista, ¿cómo lo ordeno en compose?"
+    ]},
+    { "id": "c10", "lang": "en", "prev": [
+      "Our GitHub Actions workflow takes 12 minutes, most of it is npm install, can we cache node_modules",
+      "Use actions/setup-node with the npm cache option and a lockfile hash key in the CI workflow",
+      "Split the CI workflow into lint, test and build jobs that run in parallel and share the npm cache",
+      "The test job in GitHub Actions fails because the build artifact is missing, pass it between jobs"
+    ]},
+    { "id": "c11", "lang": "es", "prev": [
+      "Necesito un script de k6 que simule usuarios colocando apuestas simples contra el endpoint de place-bet",
+      "Agregá thresholds al script de k6: p95 de place-bet menor a 300 ms y tasa de error menor al 1 %",
+      "Parametrizá el script de k6 con un CSV de usuarios y cuotas usando SharedArray",
+      "Sumá un escenario de rampa en k6 que llegue a 500 usuarios virtuales en 10 minutos"
+    ]},
+    { "id": "c12", "lang": "en", "prev": [
+      "The Rust borrow checker complains that I borrow self mutably twice in this parser struct method",
+      "Can you explain the lifetime error: borrowed value does not live long enough in the tokenizer iterator",
+      "Refactor the tokenizer so it returns owned Strings instead of &str slices to avoid the lifetime issue",
+      "Now the Rust tokenizer allocates too much, can we use Cow<str> to avoid cloning in the common case"
+    ]},
+    { "id": "c13", "lang": "es", "prev": [
+      "Tengo que agregar una columna nullable tenant_id a la tabla orders con Prisma sin downtime",
+      "Generá la migración de Prisma y un script que haga backfill del tenant_id en lotes de mil filas",
+      "Después del backfill, ¿cómo hago la columna tenant_id NOT NULL en Prisma sin bloquear la tabla?",
+      "Actualizá el schema.prisma y los tipos del cliente para que orders siempre tenga tenant_id"
+    ]},
+    { "id": "c14", "lang": "en", "prev": [
+      "Our Go gRPC client to the odds service times out under load with context deadline exceeded",
+      "Add per-call deadlines and retries with exponential backoff to the Go gRPC client interceptor",
+      "The gRPC server side should propagate the context cancellation to the database query, fix the handler",
+      "Expose gRPC client metrics for latency and retries with Prometheus in the odds client package"
+    ]},
+    { "id": "c15", "lang": "es", "prev": [
+      "Estoy armando una app de bandeja con Electron que muestra el estado de las sesiones con un ícono de colores",
+      "El ícono del tray de Electron se ve borroso en pantallas con escala 150 %, ¿cómo genero las variantes?",
+      "Agregá notificaciones nativas de Windows desde Electron sólo para las sugerencias críticas",
+      "Al hacer clic en la notificación tiene que abrirse la ventana overlay del tray en la sugerencia"
+    ]},
+    { "id": "c16", "lang": "en", "prev": [
+      "Build a responsive navbar with CSS grid: logo on the left, links centered, user menu on the right",
+      "On mobile the navbar links should collapse into a hamburger menu, keep it CSS only if possible",
+      "The dropdown user menu in the navbar overlaps the page content, fix the z-index and positioning",
+      "Add a dark mode variant of the navbar using CSS custom properties and prefers-color-scheme"
+    ]},
+    { "id": "c17", "lang": "es", "prev": [
+      "El consumer group de Kafka de liquidaciones tiene un lag creciente de 200 mil mensajes",
+      "Revisá la configuración del consumer de Kafka: max.poll.records, fetch.min.bytes y el número de particiones",
+      "Procesamos cada mensaje de liquidación con una llamada HTTP sincrónica, ¿conviene procesar en lotes?",
+      "Agregá métricas de lag por partición del consumer de Kafka al dashboard de Grafana"
+    ]},
+    { "id": "c18", "lang": "en", "prev": [
+      "My SwiftUI List with 5000 rows scrolls slowly on older iPhones, the rows load images from the network",
+      "Use AsyncImage with a cache or a custom image loader so the SwiftUI rows do not refetch on scroll",
+      "The row view recomputes a formatted date every render, move the DateFormatter out of the SwiftUI body",
+      "Profile the SwiftUI list with Instruments and tell me which view updates are the most expensive"
+    ]},
+    { "id": "c19", "lang": "es", "prev": [
+      "Necesito una expresión regular para validar un CUIT argentino con o sin guiones",
+      "Además de la regex, implementá el dígito verificador del CUIT en TypeScript",
+      "Agregá casos de prueba del validador de CUIT: válidos, con dígito verificador erróneo y con letras",
+      "Exportá el validador de CUIT como función pura y usalo en el formulario de alta de clientes"
+    ]},
+    { "id": "c20", "lang": "en", "prev": [
+      "The Django admin page for orders runs 400 queries, I suspect an N+1 on the customer foreign key",
+      "Use select_related and prefetch_related in the Django queryset for the orders admin list",
+      "The API serializer for orders also triggers N+1 queries on line items, fix the DRF viewset queryset",
+      "Add a Django test that asserts the orders endpoint runs at most 5 queries with assertNumQueries"
+    ]},
+    { "id": "c21", "lang": "es", "prev": [
+      "Armame una consulta JQL con los bugs del proyecto SBK creados este mes agrupados por prioridad",
+      "Filtrá la JQL para excluir los bugs cerrados como duplicados y los que están en estado rechazado",
+      "Necesito también los bugs de SBK que superaron el SLA de resolución según la prioridad",
+      "Con esos datos de Jira armá una tabla de bugs por equipo y por semana para el reporte mensual"
+    ]},
+    { "id": "c22", "lang": "en", "prev": [
+      "Implement the OAuth2 authorization code flow with PKCE in our single page app using the identity provider",
+      "Generate the code verifier and code challenge in the browser and store the verifier in sessionStorage",
+      "After the redirect, exchange the authorization code for tokens and handle the state parameter check",
+      "Where should the SPA keep the access token and how do we refresh it silently before it expires"
+    ]},
+    { "id": "c23", "lang": "es", "prev": [
+      "Cacheamos las cuotas de eventos en Redis con TTL de 30 segundos pero a veces se sirven cuotas viejas",
+      "Cuando cambia una cuota el servicio de pricing publica un evento, ¿cómo invalido la clave de Redis?",
+      "Implementá invalidación por evento: al recibir odds-changed borrar la clave del evento en Redis",
+      "Hay una condición de carrera: una lectura vieja repuebla la caché de Redis después de la invalidación"
+    ]},
+    { "id": "c24", "lang": "en", "prev": [
+      "We want to migrate the frontend build from Webpack to Vite, list what our webpack config does today",
+      "Translate the Webpack aliases and environment variable injection to vite.config.ts",
+      "The Vite dev server fails on a CommonJS dependency, configure optimizeDeps for that package",
+      "Compare bundle sizes between the old Webpack build and the new Vite build and explain the difference"
+    ]},
+    { "id": "c25", "lang": "es", "prev": [
+      "Tengo que armar el reporte financiero mensual de ingresos por producto a partir de la base de ventas",
+      "Escribí la consulta SQL que sume ingresos netos por producto y mes, restando devoluciones",
+      "Agregá la comparación contra el mes anterior y el porcentaje de variación por producto en el reporte",
+      "Exportá el resultado del reporte financiero a Excel con una hoja por región y totales al pie"
+    ]}
+  ],
+  "cases": [
+    { "id": 1, "ctx": "c01", "label": "same", "prompt": "En el parser JSONL todavía se duplica el usage cuando el mismo message.id aparece en tres líneas, revisá la deduplicación" },
+    { "id": 2, "ctx": "c01", "label": "same", "prompt": "Ok, ahora que pasan, sumá un caso más al fixture con un subagente y verificá que no toque el contexto principal" },
+    { "id": 3, "ctx": "c01", "label": "new", "prompt": "Armame un plan de vacaciones de una semana en la Patagonia con presupuesto moderado y traslados en micro" },
+    { "id": 4, "ctx": "c01", "label": "new", "prompt": "Configurá el deploy del sitio de documentación en GitHub Pages con un workflow que publique en cada tag" },
+    { "id": 5, "ctx": "c02", "label": "same", "prompt": "The dashboard useEffect cleanup works, but the websocket reconnect logic still creates a second subscription" },
+    { "id": 6, "ctx": "c02", "label": "same", "prompt": "Great, now the test passes locally but fails in CI with act warnings, can you fix those" },
+    { "id": 7, "ctx": "c02", "label": "new", "prompt": "Write a cover letter for a senior backend engineer position at a fintech company in Madrid" },
+    { "id": 8, "ctx": "c02", "label": "new", "prompt": "Set up ESLint and Prettier in the monorepo root so every package shares the same configuration" },
+    { "id": 9, "ctx": "c03", "label": "same", "prompt": "Después del ANALYZE la consulta de apuestas usa el índice compuesto pero el sort sigue en disco, ¿subo work_mem?" },
+    { "id": 10, "ctx": "c03", "label": "same", "prompt": "Mirá el nuevo plan que te pego, bajó a 900 ms pero quiero llegar a menos de 100, ¿qué más probamos?" },
+    { "id": 11, "ctx": "c03", "label": "new", "prompt": "Explicame la diferencia entre fondos comunes de inversión y plazos fijos para ahorrar a un año" },
+    { "id": 12, "ctx": "c03", "label": "new", "prompt": "Necesito diseñar el modelo de datos de un sistema de reservas de turnos médicos con pacientes y profesionales" },
+    { "id": 13, "ctx": "c04", "label": "same", "prompt": "The pricing service readiness probe still fails, the pod logs show slow startup because of cache warmup" },
+    { "id": 14, "ctx": "c04", "label": "same", "prompt": "Should we use a startupProbe instead so it does not get killed while warming up, update the manifest" },
+    { "id": 15, "ctx": "c04", "label": "new", "prompt": "Suggest a weekly meal prep plan with high protein vegetarian recipes and a shopping list" },
+    { "id": 16, "ctx": "c04", "label": "new", "prompt": "Write a Python script that renames photos in a folder using the date taken from their EXIF metadata" },
+    { "id": 17, "ctx": "c05", "label": "same", "prompt": "El test de login de Playwright volvió a fallar en CI, te paso el trace: el botón ingresar tarda en habilitarse" },
+    { "id": 18, "ctx": "c05", "label": "same", "prompt": "Usá getByRole con nombre accesible en vez del selector CSS para el menú del usuario y reintentá en Firefox" },
+    { "id": 19, "ctx": "c05", "label": "new", "prompt": "Redactá un mail para el equipo avisando que el viernes se corta la luz en la oficina de 9 a 13" },
+    { "id": 20, "ctx": "c05", "label": "new", "prompt": "Diseñá los casos de prueba de API para el endpoint de retiro de fondos con límites diarios y KYC" },
+    { "id": 21, "ctx": "c06", "label": "same", "prompt": "The S3 bucket module now plans cleanly, add a lifecycle rule to move old object versions to Glacier" },
+    { "id": 22, "ctx": "c06", "label": "same", "prompt": "Also add the module to the staging environment and show me the plan output before we apply" },
+    { "id": 23, "ctx": "c06", "label": "new", "prompt": "What are good exercises to strengthen the lower back after sitting all day at a desk" },
+    { "id": 24, "ctx": "c06", "label": "new", "prompt": "Help me write a Bash script that rotates application logs daily and compresses files older than a week" },
+    { "id": 25, "ctx": "c07", "label": "same", "prompt": "El endpoint de refresh emite el JWT pero no invalida el refresh token viejo, agregá rotación de refresh tokens" },
+    { "id": 26, "ctx": "c07", "label": "same", "prompt": "Los tests con supertest pasan; ahora documentá los endpoints de auth en el OpenAPI" },
+    { "id": 27, "ctx": "c07", "label": "new", "prompt": "Recomendame cinco novelas de ciencia ficción clásica para alguien que recién empieza con el género" },
+    { "id": 28, "ctx": "c07", "label": "new", "prompt": "Implementá un servicio de envío de mails transaccionales con colas y reintentos usando BullMQ" },
+    { "id": 29, "ctx": "c08", "label": "same", "prompt": "The pandas groupby by customer and month drops the flagged refunds, keep them in the monthly totals" },
+    { "id": 30, "ctx": "c08", "label": "same", "prompt": "Now plot the monthly totals for the top ten customers and save the chart as a PNG" },
+    { "id": 31, "ctx": "c08", "label": "new", "prompt": "Explain how the TCP three way handshake works and what SYN flood attacks exploit" },
+    { "id": 32, "ctx": "c08", "label": "new", "prompt": "Create a FastAPI service with a health endpoint and a Dockerfile for deployment to Cloud Run" },
+    { "id": 33, "ctx": "c09", "label": "same", "prompt": "Las migraciones siguen corriendo antes de que postgres esté listo en docker compose, ¿uso un servicio migrate aparte?" },
+    { "id": 34, "ctx": "c09", "label": "same", "prompt": "Perfecto, ahora que levanta todo, agregá un volumen para persistir los datos entre reinicios" },
+    { "id": 35, "ctx": "c09", "label": "new", "prompt": "¿Cómo le explico a mi hijo de diez años cómo funciona la fotosíntesis con un experimento casero?" },
+    { "id": 36, "ctx": "c09", "label": "new", "prompt": "Escribí una función en TypeScript que calcule cuotas decimales a partir de probabilidades con margen" },
+    { "id": 37, "ctx": "c10", "label": "same", "prompt": "The GitHub Actions cache key keeps missing because the lockfile hash changes, use a restore-keys fallback" },
+    { "id": 38, "ctx": "c10", "label": "same", "prompt": "Upload the build artifact in the build job and download it in the test job, then rerun the pipeline" },
+    { "id": 39, "ctx": "c10", "label": "new", "prompt": "Draft a one page proposal for a four day work week pilot for our engineering department" },
+    { "id": 40, "ctx": "c10", "label": "new", "prompt": "Write unit tests for the currency conversion utility including rounding and unsupported currencies" },
+    { "id": 41, "ctx": "c11", "label": "same", "prompt": "En el escenario de rampa de k6 el p95 de place-bet pasa de 300 ms a los 400 usuarios, ¿cómo lo segmento por tag?" },
+    { "id": 42, "ctx": "c11", "label": "same", "prompt": "Sumale un chequeo del cuerpo de respuesta con check() para que cuente como error si la apuesta no se aceptó" },
+    { "id": 43, "ctx": "c11", "label": "new", "prompt": "Contame la historia del Mundial 86 y por qué el gol de Maradona a los ingleses es tan recordado" },
+    { "id": 44, "ctx": "c11", "label": "new", "prompt": "Hacé una revisión de seguridad del endpoint de login: rate limiting, bloqueo de cuentas y mensajes de error" },
+    { "id": 45, "ctx": "c12", "label": "same", "prompt": "With Cow<str> the tokenizer compiles but the parser still clones tokens when building the AST, can we avoid it" },
+    { "id": 46, "ctx": "c12", "label": "same", "prompt": "Run cargo bench on the tokenizer before and after the change and summarize the allocation difference" },
+    { "id": 47, "ctx": "c12", "label": "new", "prompt": "Plan a birthday party for a seven year old with a dinosaur theme and a budget of two hundred dollars" },
+    { "id": 48, "ctx": "c12", "label": "new", "prompt": "Set up a PostgreSQL logical replication slot to stream changes into our analytics warehouse" },
+    { "id": 49, "ctx": "c13", "label": "same", "prompt": "El backfill del tenant_id en orders terminó, generá la migración de Prisma que agrega el NOT NULL con validación" },
+    { "id": 50, "ctx": "c13", "label": "same", "prompt": "Ahora que el tipo es obligatorio, arreglá los tres lugares del código donde se crean pedidos sin ese campo" },
+    { "id": 51, "ctx": "c13", "label": "new", "prompt": "Necesito ideas para el discurso de casamiento de mi mejor amigo, algo emotivo pero con humor" },
+    { "id": 52, "ctx": "c13", "label": "new", "prompt": "Configurá Sentry en el frontend de React para capturar errores con el release y los source maps" },
+    { "id": 53, "ctx": "c14", "label": "same", "prompt": "The gRPC retry interceptor retries non idempotent calls to the odds service, restrict retries to reads" },
+    { "id": 54, "ctx": "c14", "label": "same", "prompt": "The dashboards show p99 went up after the change, dig into whether the backoff jitter is too aggressive" },
+    { "id": 55, "ctx": "c14", "label": "new", "prompt": "Translate this product description for a wireless headset into French and German for the online store" },
+    { "id": 56, "ctx": "c14", "label": "new", "prompt": "Write a SQL migration that splits the users full name column into first and last name columns" },
+    { "id": 57, "ctx": "c15", "label": "same", "prompt": "La notificación crítica de Electron abre la ventana overlay pero no enfoca la sugerencia correcta del tray" },
+    { "id": 58, "ctx": "c15", "label": "same", "prompt": "Agregá la opción de posponer 15 minutos desde el overlay y que el ícono vuelva a verde mientras tanto" },
+    { "id": 59, "ctx": "c15", "label": "new", "prompt": "Explicame cómo declarar ganancias de un monotributista que además tiene un empleo en relación de dependencia" },
+    { "id": 60, "ctx": "c15", "label": "new", "prompt": "Escribí un scraper con Python que baje los precios de un catálogo online y los guarde en un CSV" },
+    { "id": 61, "ctx": "c16", "label": "same", "prompt": "The navbar hamburger menu does not close when you click a link on mobile, fix it without JavaScript if possible" },
+    { "id": 62, "ctx": "c16", "label": "same", "prompt": "In dark mode the dropdown text has poor contrast, adjust the custom properties to pass WCAG AA" },
+    { "id": 63, "ctx": "c16", "label": "new", "prompt": "Summarize the main differences between the Roman Republic and the Roman Empire for a history exam" },
+    { "id": 64, "ctx": "c16", "label": "new", "prompt": "Create a GraphQL resolver for paginated products with cursor based pagination and filtering by category" },
+    { "id": 65, "ctx": "c17", "label": "same", "prompt": "Con el procesamiento en lotes el lag de Kafka bajó pero hay mensajes de liquidación procesados dos veces tras un rebalance" },
+    { "id": 66, "ctx": "c17", "label": "same", "prompt": "Hacé idempotente el handler usando el id de la liquidación como clave y confirmá offsets después de guardar" },
+    { "id": 67, "ctx": "c17", "label": "new", "prompt": "Dame una rutina de entrenamiento de fuerza de tres días por semana para principiantes con mancuernas" },
+    { "id": 68, "ctx": "c17", "label": "new", "prompt": "Armá el pipeline de CI para publicar la librería interna de utilidades en el registro npm privado" },
+    { "id": 69, "ctx": "c18", "label": "same", "prompt": "Instruments shows the SwiftUI row body is recomputed when unrelated state changes, split the row into smaller views" },
+    { "id": 70, "ctx": "c18", "label": "same", "prompt": "After splitting the views scrolling is smoother, but the image cache grows without limit, cap its memory" },
+    { "id": 71, "ctx": "c18", "label": "new", "prompt": "Write a short bedtime story about a lighthouse keeper and a lost whale for a five year old" },
+    { "id": 72, "ctx": "c18", "label": "new", "prompt": "Design the REST endpoints for a loyalty points program with earning rules and redemption" },
+    { "id": 73, "ctx": "c19", "label": "same", "prompt": "El validador de CUIT rechaza los que empiezan con 30 de empresas, revisá los prefijos permitidos en la regex" },
+    { "id": 74, "ctx": "c19", "label": "same", "prompt": "Mostrá el error del validador debajo del campo en el formulario de alta y bloqueá el envío mientras sea inválido" },
+    { "id": 75, "ctx": "c19", "label": "new", "prompt": "¿Qué vino me recomendás para acompañar un asado con amigos que no sea muy caro?" },
+    { "id": 76, "ctx": "c19", "label": "new", "prompt": "Implementá la paginación del listado de clientes en el backend con límite, offset y orden por fecha de alta" },
+    { "id": 77, "ctx": "c20", "label": "same", "prompt": "assertNumQueries fails with 7 queries on the orders endpoint, the extra ones come from the permissions check" },
+    { "id": 78, "ctx": "c20", "label": "same", "prompt": "Cache the permission lookups per request and rerun the query count test for the viewset" },
+    { "id": 79, "ctx": "c20", "label": "new", "prompt": "What should I pack for a two week backpacking trip through Southeast Asia during the rainy season" },
+    { "id": 80, "ctx": "c20", "label": "new", "prompt": "Set up Celery with Redis for sending weekly digest emails and schedule it with celery beat" },
+    { "id": 81, "ctx": "c21", "label": "same", "prompt": "En la tabla de bugs por equipo faltan los de SBK sin componente asignado, agregalos como 'sin equipo'" },
+    { "id": 82, "ctx": "c21", "label": "same", "prompt": "Sumá al reporte mensual el tiempo medio de resolución por prioridad usando la misma JQL" },
+    { "id": 83, "ctx": "c21", "label": "new", "prompt": "Ayudame a elegir una notebook para programar y editar video con un presupuesto de mil quinientos dólares" },
+    { "id": 84, "ctx": "c21", "label": "new", "prompt": "Automatizá con Playwright el alta de un evento deportivo en el backoffice y validá que aparezca en la grilla" },
+    { "id": 85, "ctx": "c22", "label": "same", "prompt": "The PKCE token exchange works but the silent refresh fails in Safari because of third party cookie blocking" },
+    { "id": 86, "ctx": "c22", "label": "same", "prompt": "Let's move the token handling to a backend for frontend and keep only an httpOnly session cookie in the SPA" },
+    { "id": 87, "ctx": "c22", "label": "new", "prompt": "Give me a beginner friendly explanation of how compound interest works with a numeric example" },
+    { "id": 88, "ctx": "c22", "label": "new", "prompt": "Build a CLI in Node that reads a YAML config and scaffolds a new microservice from templates" },
+    { "id": 89, "ctx": "c23", "label": "same", "prompt": "Para la condición de carrera en Redis probemos versionar la clave de cuotas con el número de secuencia del evento" },
+    { "id": 90, "ctx": "c23", "label": "same", "prompt": "Escribí un test de integración que reproduzca la lectura vieja repoblando la caché justo después de invalidar" },
+    { "id": 91, "ctx": "c23", "label": "new", "prompt": "Pasame una receta de ñoquis caseros de papa para el 29 con salsa de tomate y albahaca" },
+    { "id": 92, "ctx": "c23", "label": "new", "prompt": "Configurá alertas en Grafana para cuando el error rate del gateway supere el 2 % durante cinco minutos" },
+    { "id": 93, "ctx": "c24", "label": "same", "prompt": "The Vite build is larger than Webpack because moment locales are bundled, strip them with a plugin" },
+    { "id": 94, "ctx": "c24", "label": "same", "prompt": "Update the npm scripts and the CI to use the new build command and remove the old config files" },
+    { "id": 95, "ctx": "c24", "label": "new", "prompt": "Help me prepare questions for a job interview where I am the interviewer for a product manager role" },
+    { "id": 96, "ctx": "c24", "label": "new", "prompt": "Implement a rate limiter middleware in Go using a token bucket per API key with Redis" },
+    { "id": 97, "ctx": "c25", "label": "same", "prompt": "En el reporte financiero las devoluciones del mes anterior se restan al mes actual, corregí la consulta por fecha de venta" },
+    { "id": 98, "ctx": "c25", "label": "same", "prompt": "Agregá un gráfico de barras por región en la hoja de resumen del Excel y formato de moneda en las columnas" },
+    { "id": 99, "ctx": "c25", "label": "new", "prompt": "Explicame las reglas del pádel y cómo se cuentan los puntos en un partido" },
+    { "id": 100, "ctx": "c25", "label": "new", "prompt": "Escribí un servicio en Node que reciba webhooks de pagos, valide la firma y encole el procesamiento" }
+  ]
+}

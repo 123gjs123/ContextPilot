@@ -72,3 +72,17 @@ describe('renderPanel', () => {
     expect(renderPanel({ ...base, daemon: 'unconfigured' })).toContain('open-options');
   });
 });
+
+describe('D-1: aviso de cuenta en el side panel', () => {
+  it('se muestra aparte de la sugerencia de la conversación, con Ignorar', () => {
+    const account = {
+      id: 'acc-1', ruleId: 'R10', sessionId: 'account:anthropic', severity: 'critical' as const,
+      title: 'A este ritmo llegás al límite a las 12:58', detail: 'Usaste 74 % de 100 %', actions: [{ kind: 'show-detail' as const, label: 'Ver' }], expiresAt: '',
+    };
+    const html = renderPanel({ ...base, account });
+    expect(html).toContain('data-account="account:anthropic"');
+    expect(html).toContain('12:58');
+    expect(html).toContain('data-act="dismiss-account"');
+    expect(renderPanel(base)).not.toContain('data-account');
+  });
+});

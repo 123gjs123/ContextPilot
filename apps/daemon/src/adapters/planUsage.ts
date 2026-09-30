@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { PlanProfile } from '@contextpilot/core';
+import type { PlanProfile, UsageWindow } from '@contextpilot/core';
 import type { HealthRegistry } from '../health.js';
 import type { Logger } from '../log.js';
 
@@ -14,6 +14,7 @@ import type { Logger } from '../log.js';
 const NAME = 'claude-plan-usage';
 export const PLAN_USAGE_STALE_MS = 45 * 60_000;
 export const FIVE_HOURS_MS = 5 * 3_600_000;
+export const SEVEN_DAYS_MS = 7 * 86_400_000;
 
 export interface PlanSample {
   t: number;
@@ -69,16 +70,33 @@ export function parsePlanSamples(raw: string): PlanSample[] | null {
  * siguientes, los incrementos. Si el % cae (la ventana se renovó), la serie arranca en esa muestra.
  * Así, la suma de la serie = % usado en la ventana actual y su primer ts ≈ inicio de la ventana.
  */
-export function planUsagePoints(samples: PlanSample[], now = Date.now()): { ts: number; tokens: number }[] {
-  const inWin = samples.filter((s) => s.t >= now - FIVE_HOURS_MS && s.t <= now);
+export function planUsagePoints(
+  samples: PlanSample[],
+  now = Date.now(),
+  field: 'fh' | 'sd' = 'fh',
+  windowMs = field === 'fh' ? FIVE_HOURS_MS : SEVEN_DAYS_MS,
+): { ts: number; tokens: number }[] {
+  const inWin = samples.filter((s) => s.t >= now - windowMs && s.t <= now);
   let start = 0;
-  for (let i = 1; i < inWin.length; i++) if (inWin[i]!.fh < inWin[i - 1]!.fh) start = i;
+  for (let i = 1; i < inWin.length; i++) if (inWin[i]![field] < inWin[i - 1]![field]) start = i;
   const seg = inWin.slice(start);
-  return seg.map((s, i) => ({ ts: s.t, tokens: i === 0 ? s.fh : Math.max(0, s.fh - seg[i - 1]!.fh) }));
+  return seg.map((s, i) => ({ ts: s.t, tokens: i === 0 ? s[field] : Math.max(0, s[field] - seg[i - 1]![field]) }));
 }
 
-/** Plan sintético en unidades de % (budget = 100) para que R10 proyecte con la serie de Desktop. */
-export const PERCENT_PLAN: PlanProfile = { provider: 'anthropic', kind: 'subscription', windowMs: FIVE_HOURS_MS, windowBudgetTokens: 100 };
+/**
+ * Plan sintético en unidades de % (límite = 100) para que R10 proyecte con la serie de Desktop.
+ * D-15: dos ventanas (5 h y 7 días), cada una con su propia serie (`byWindow`).
+ */
+export const PERCENT_PLAN: PlanProfile = {
+  provider: 'anthropic',
+  kind: 'subscription',
+  windowMs: FIVE_HOURS_MS,
+  windowBudgetTokens: 100,
+  windows: [
+    { hours: 5, limit: 100 },
+    { days: 7, limit: 100 },
+  ],
+};
 
 export class PlanUsageAdapter {
   private samples: PlanSample[] = [];
@@ -167,10 +185,16 @@ export class PlanUsageAdapter {
   }
 
   /** Serie de R10 si hay una muestra fresca; undefined si no aplica. */
-  usageWindow(now = Date.now()): { provider: 'anthropic'; points: { ts: number; tokens: number }[] } | undefined {
+  usageWindow(now = Date.now()): UsageWindow | undefined {
     const last = this.samples.at(-1);
     if (!last || now - last.t > PLAN_USAGE_STALE_MS) return undefined;
-    return { provider: 'anthropic', points: planUsagePoints(this.samples, now) };
+    const five = planUsagePoints(this.samples, now, 'fh');
+    return { provider: 'anthropic', points: five, byWindow: { '5h': five, '168h': planUsagePoints(this.samples, now, 'sd') } };
+  }
+
+  /** Muestras crudas (para la evaluación de la proyección, D-5). */
+  allSamples(): PlanSample[] {
+    return this.samples.slice();
   }
 
   fresh(now = Date.now()): boolean {

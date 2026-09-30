@@ -2,7 +2,7 @@ import { embed } from '../embed.js';
 import { estimateTokens } from '../estimate.js';
 import { contextWindowFor, contextWindowInfo } from '../models.js';
 import { redact } from '../redact.js';
-import type { ToolCall, TurnEvent } from '../types.js';
+import type { AvailableTool, ToolCall, TurnEvent } from '../types.js';
 import { hash, ulid } from '../util.js';
 import { splitBlocks } from './blocks.js';
 
@@ -14,6 +14,27 @@ import { splitBlocks } from './blocks.js';
 // - Registros de subagentes (isSidechain, o archivos <sesión>/subagents/*.jsonl con opción
 //   sidechain) se emiten con sidechain=true y sessionId del padre: suman a acumulados y a R5/R8
 //   pero no cuentan para el contexto de la sesión principal (DECISIONS «subagentes»).
+// - D-4 (R6): inventario de servidores MCP desde los adjuntos del transcript (deferred_tools_delta,
+//   deferred_tools_record, mcp_instructions_delta). Costo por turno ESTIMADO (nombres listados +
+//   instrucciones + definiciones cargadas), agrupado por servidor `mcp__<servidor>`.
+// - D-2 (R1): archivos y herramientas de los últimos 5 prompts, sólo en memoria, para el foco de
+//   `/compact <foco>`. Nunca se emite en eventos ni se persiste.
+
+/** Herramientas que no dicen nada del foco del trabajo. */
+const FOCUS_IGNORED_TOOLS = new Set(['TodoWrite', 'ToolSearch', 'TaskOutput', 'TaskStop', 'SubagentHandback']);
+const FOCUS_TURNS = 5;
+const FOCUS_MAX_CHARS = 180;
+
+interface TurnActivity {
+  files: Map<string, number>;
+  tools: Map<string, number>;
+}
+
+/** Nombre de servidor MCP normalizado como en los nombres de herramienta (`claude.ai X` → `claude_ai_X`). */
+export function mcpServerKey(displayOrTool: string): string {
+  if (displayOrTool.startsWith('mcp__')) return displayOrTool.split('__')[1] ?? displayOrTool;
+  return displayOrTool.replace(/[^A-Za-z0-9_-]/g, '_');
+}
 
 interface PendingTool {
   name: string;
@@ -44,8 +65,100 @@ export class ClaudeCodeParser {
   private windowFloor = 0;
   sessionId?: string;
   errors = 0;
+  /** D-4: nombre de herramienta diferida → tokens estimados de su línea en el listado. */
+  private deferred = new Map<string, number>();
+  /** D-4: definiciones completas cargadas (ToolSearch) → tokens estimados. */
+  private loadedDefs = new Map<string, number>();
+  /** D-4: servidor MCP → tokens estimados de sus instrucciones. */
+  private mcpInstructions = new Map<string, number>();
+  private inventoryDirty = false;
+  private inventory: AvailableTool[] = [];
+  /** D-2: actividad de los últimos prompts (sólo memoria). */
+  private activity: TurnActivity[] = [];
 
   constructor(private opts: ClaudeCodeParserOptions = {}) {}
+
+  /** D-4: servidores MCP disponibles con costo por turno estimado. */
+  toolsAvailable(): AvailableTool[] {
+    if (!this.inventoryDirty) return this.inventory;
+    this.inventoryDirty = false;
+    const by = new Map<string, number>();
+    const add = (server: string, t: number) => by.set(server, (by.get(server) ?? 0) + t);
+    for (const [name, t] of this.deferred) if (name.startsWith('mcp__')) add(mcpServerKey(name), t);
+    for (const [name, t] of this.loadedDefs) if (name.startsWith('mcp__')) add(mcpServerKey(name), t);
+    for (const [server, t] of this.mcpInstructions) add(server, t);
+    this.inventory = [...by].map(([server, t]) => ({ name: `mcp__${server}`, definitionTokens: Math.round(t), estimated: true }));
+    return this.inventory;
+  }
+
+  /**
+   * D-2 / CP-010.3: foco para `/compact` con los archivos y herramientas más usados en los últimos 5
+   * prompts (sin contenido de prompt). undefined si no hay actividad.
+   */
+  focus(): string | undefined {
+    const files = new Map<string, number>();
+    const tools = new Map<string, number>();
+    for (const a of this.activity) {
+      for (const [k, v] of a.files) files.set(k, (files.get(k) ?? 0) + v);
+      for (const [k, v] of a.tools) tools.set(k, (tools.get(k) ?? 0) + v);
+    }
+    const top = (m: Map<string, number>, n: number) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
+    const f = top(files, 4);
+    const t = top(tools, 3);
+    if (!f.length && !t.length) return undefined;
+    let text = f.length ? `Conservá el trabajo sobre ${f.join(', ')}` : 'Conservá el trabajo reciente';
+    if (t.length) text += ` (${t.join(', ')})`;
+    text += '; resumí el resto.';
+    text = redact(text);
+    return text.length > FOCUS_MAX_CHARS ? `${text.slice(0, FOCUS_MAX_CHARS - 1)}…` : text;
+  }
+
+  private onAttachment(a: any): void {
+    if (!a || typeof a !== 'object') return;
+    if (a.type === 'deferred_tools_delta') {
+      const names: unknown[] = [...(Array.isArray(a.addedNames) ? a.addedNames : []), ...(Array.isArray(a.readdedNames) ? a.readdedNames : [])];
+      const lines: unknown[] = Array.isArray(a.addedLines) ? a.addedLines : [];
+      names.forEach((n, i) => {
+        if (typeof n !== 'string') return;
+        const line = typeof lines[i] === 'string' ? (lines[i] as string) : n;
+        this.deferred.set(n, estimateTokens(line) + 1);
+      });
+      for (const n of Array.isArray(a.removedNames) ? a.removedNames : []) {
+        this.deferred.delete(n);
+        this.loadedDefs.delete(n);
+      }
+      this.inventoryDirty = true;
+    } else if (a.type === 'deferred_tools_record') {
+      for (const e of Array.isArray(a.entries) ? a.entries : []) {
+        if (typeof e?.name === 'string') this.loadedDefs.set(e.name, estimateTokens(JSON.stringify(e)));
+      }
+      this.inventoryDirty = true;
+    } else if (a.type === 'mcp_instructions_delta') {
+      const names: unknown[] = Array.isArray(a.addedNames) ? a.addedNames : [];
+      const blocks: unknown[] = Array.isArray(a.addedBlocks) ? a.addedBlocks : [];
+      names.forEach((n, i) => {
+        if (typeof n === 'string') this.mcpInstructions.set(mcpServerKey(n), estimateTokens(String(blocks[i] ?? '')));
+      });
+      for (const n of Array.isArray(a.removedNames) ? a.removedNames : []) if (typeof n === 'string') this.mcpInstructions.delete(mcpServerKey(n));
+      this.inventoryDirty = true;
+    }
+  }
+
+  /** D-2: registra archivos (sólo el nombre base) y herramientas del hilo principal en el prompt actual. */
+  private noteActivity(msg: any): void {
+    const cur = this.activity.at(-1);
+    if (!cur) return;
+    for (const block of msg.content ?? []) {
+      if (block?.type !== 'tool_use' || typeof block.name !== 'string') continue;
+      if (!FOCUS_IGNORED_TOOLS.has(block.name)) cur.tools.set(block.name, (cur.tools.get(block.name) ?? 0) + 1);
+      const inp = block.input ?? {};
+      const path = inp.file_path ?? inp.notebook_path ?? (block.name === 'Read' || block.name === 'Edit' || block.name === 'Write' ? inp.path : undefined);
+      if (typeof path === 'string' && path) {
+        const base = path.split(/[\\/]/).pop()!;
+        if (base) cur.files.set(base, (cur.files.get(base) ?? 0) + 1);
+      }
+    }
+  }
 
   /** Procesa una línea JSONL; devuelve 0..n eventos. Líneas inválidas se cuentan y se ignoran. */
   feed(line: string): TurnEvent[] {
@@ -60,6 +173,10 @@ export class ClaudeCodeParser {
     }
     if (rec.version) this.formatVersions.add(String(rec.version));
     if (rec.sessionId) this.sessionId = rec.sessionId;
+    if (rec.type === 'attachment' && !rec.isSidechain && !this.opts.sidechain) {
+      this.onAttachment(rec.attachment);
+      return [];
+    }
     if (rec.isSidechain || this.opts.sidechain) return this.onSidechain(rec);
     if (rec.type === 'user') return this.onUser(rec);
     if (rec.type === 'assistant') return this.onAssistant(rec);
@@ -164,6 +281,8 @@ export class ClaudeCodeParser {
     if (!text || text.startsWith('<command-') || text.startsWith('<local-command')) return [];
     this.promptTs = ts;
     this.turn += 1;
+    this.activity.push({ files: new Map(), tools: new Map() });
+    if (this.activity.length > FOCUS_TURNS) this.activity.shift();
     const clean = redact(text);
     const promptTokens = estimateTokens(text);
     const ev: TurnEvent = {
@@ -193,6 +312,7 @@ export class ClaudeCodeParser {
     if (!msg) return [];
     const ts = Date.parse(rec.timestamp ?? '') || Date.now();
     this.rememberToolUses(msg);
+    this.noteActivity(msg);
     const id: string | undefined = msg.id;
     const usage = msg.usage;
     if (!id || !usage || this.seen.has(id)) return [];
@@ -221,6 +341,7 @@ export class ClaudeCodeParser {
     this.lastAssistantTs = ts;
     const toolCalls = this.pendingResults;
     this.pendingResults = [];
+    const tools = this.toolsAvailable();
     return [
       {
         id: ulid(ts),
@@ -239,6 +360,7 @@ export class ClaudeCodeParser {
         promptHash: '',
         cacheTtlMs: this.cacheTtlMs,
         phase: 'response',
+        ...(tools.length ? { toolsAvailable: tools } : {}),
       },
     ];
   }

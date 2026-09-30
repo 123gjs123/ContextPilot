@@ -1,5 +1,6 @@
 import { R1, R2, R3, R5, R6, R7, R8, R9 } from './rules/cli.js';
 import { G1, G2, R10, R4, W1, W2, W3, W4 } from './rules/other.js';
+import { accountSessionId } from './actions.js';
 import type {
   Config,
   Feedback,
@@ -11,6 +12,7 @@ import type {
   Severity,
   Suggestion,
   TurnEvent,
+  UsageWindow,
 } from './types.js';
 import { estimateSaving } from './savings.js';
 import { ulid } from './util.js';
@@ -59,11 +61,18 @@ export interface EvaluateInput {
   prev?: SessionState;
   state: SessionState;
   now?: number;
-  usageWindow?: { provider: Provider; points: { ts: number; tokens: number }[] };
+  usageWindow?: UsageWindow;
+  /** D-11: subidas por hash del adjunto en el sitio (7 días, todas las conversaciones). */
+  siteAttachmentCounts?: Record<string, number>;
+  /** Reglas a no evaluar en este evento (p. ej. R2 ya emitido por el temporizador para esta pausa). */
+  skipRules?: string[];
 }
 
 export interface EvaluateOutput {
-  /** Sugerencias nuevas a publicar (0 o 1 por sesión con maxVisiblePerSession=1). */
+  /**
+   * Sugerencias nuevas a publicar: 0 o 1 de la sesión (maxVisiblePerSession=1) y, aparte, 0 o 1 de
+   * cuenta por proveedor (D-1, sessionId `account:<proveedor>`).
+   */
   published: Suggestion[];
   /** Reglas que dispararon pero quedaron agrupadas o suprimidas. */
   suppressed: { ruleId: string; reason: 'cooldown' | 'grouped' | 'visible' }[];
@@ -129,10 +138,13 @@ export class RuleEngine {
     const phase = event.phase ?? 'response';
     const out: EvaluateOutput = { published: [], suppressed: [] };
     const fired: { rule: Rule; suggestion: Suggestion; priority: number }[] = [];
+    const account: { rule: Rule; suggestion: Suggestion; priority: number }[] = [];
+    const accountId = accountSessionId(event.provider);
 
     for (const rule of this.rules) {
       const settings = this.config.rules[rule.id];
       if (settings && !settings.enabled) continue;
+      if (input.skipRules?.includes(rule.id)) continue;
       if (!rule.on.includes(phase)) continue;
       if (!rule.sources.includes(event.source)) continue;
       if (event.sidechain && !SIDECHAIN_RULES.has(rule.id)) continue;
@@ -146,9 +158,12 @@ export class RuleEngine {
         now,
         plan: this.planFor(event.provider),
         usageWindow: input.usageWindow,
+        siteAttachmentCounts: input.siteAttachmentCounts,
       });
       if (!res) continue;
-      const key = `${event.sessionId}:${rule.id}`;
+      const isAccount = rule.scope === 'account';
+      const sid = isAccount ? accountId : event.sessionId;
+      const key = `${sid}:${rule.id}`;
       if ((this.cooldowns.get(key) ?? 0) > now) {
         out.suppressed.push({ ruleId: rule.id, reason: 'cooldown' });
         continue;
@@ -157,7 +172,7 @@ export class RuleEngine {
       const suggestion: Suggestion = {
         id: ulid(now),
         ruleId: rule.id,
-        sessionId: event.sessionId,
+        sessionId: sid,
         severity: eff.severity,
         quiet: eff.quiet || undefined,
         title: res.title,
@@ -169,10 +184,21 @@ export class RuleEngine {
         expiresAt: new Date(now + SUGGESTION_TTL_MS).toISOString(),
         estimated: event.tokens.estimated,
       };
-      fired.push({ rule, suggestion, priority: this.priority(rule.id, res.severity) });
+      (isAccount ? account : fired).push({ rule, suggestion, priority: this.priority(rule.id, res.severity) });
     }
-    if (!fired.length) return out;
+    // D-1: las de cuenta compiten sólo entre sí, en su propio lugar visible por proveedor.
+    if (account.length) this.select(account, accountId, now, out);
+    if (fired.length) this.select(fired, event.sessionId, now, out);
+    return out;
+  }
 
+  /** Elige la sugerencia visible de un «lugar» (sesión o cuenta), agrupa el resto y fija cooldowns. */
+  private select(
+    fired: { rule: Rule; suggestion: Suggestion; priority: number }[],
+    slot: string,
+    now: number,
+    out: EvaluateOutput,
+  ): void {
     // Decisión 27: mayor severidad; empate → mayor ahorro estimado.
     fired.sort(
       (a, b) =>
@@ -181,12 +207,16 @@ export class RuleEngine {
     );
     const top = fired[0]!;
     const rest = fired.slice(1);
-    const cur = this.visible.get(event.sessionId);
+    const cur = this.visible.get(slot);
     const curActive = cur && cur.until > now;
 
-    if (curActive && cur.priority >= top.priority) {
+    // Misma regla de desempate que entre simultáneas (DECISIONS «una visible»): la vigente se queda
+    // salvo que la nueva tenga mayor severidad, o igual severidad y mayor ahorro estimado (p. ej. R2
+    // proactivo tras una pausa reemplaza a un R1 warn: la caché ya expiró y compactar dejó de ser lo mejor).
+    const saving = (s: Suggestion) => s.estimatedSavingTokens ?? 0;
+    if (curActive && (cur.priority > top.priority || (cur.priority === top.priority && saving(cur.suggestion) >= saving(top.suggestion)))) {
       for (const f of fired) out.suppressed.push({ ruleId: f.rule.id, reason: 'visible' });
-      return out;
+      return;
     }
 
     top.suggestion.grouped = rest.map((f) => ({ ruleId: f.rule.id, title: f.suggestion.title }));
@@ -194,12 +224,11 @@ export class RuleEngine {
     for (const f of fired) {
       const base = this.config.rules[f.rule.id]?.cooldownMs ?? f.rule.defaultCooldownMs;
       const cd = base * 2 ** this.penalty(f.rule.id);
-      this.cooldowns.set(`${event.sessionId}:${f.rule.id}`, now + cd);
+      this.cooldowns.set(`${slot}:${f.rule.id}`, now + cd);
     }
-    this.visible.set(event.sessionId, { suggestion: top.suggestion, priority: top.priority, until: now + SUGGESTION_TTL_MS });
+    this.visible.set(slot, { suggestion: top.suggestion, priority: top.priority, until: now + SUGGESTION_TTL_MS });
     this.byId.set(top.suggestion.id, top.suggestion);
     out.published.push(top.suggestion);
-    return out;
   }
 
   /** RF-SUG-03 + RF-REG-04. Devuelve la sugerencia afectada si existe. */

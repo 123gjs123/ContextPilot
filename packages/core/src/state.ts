@@ -1,4 +1,5 @@
 import { updateCentroid } from './embed.js';
+import { pushBurnSample, sessionBurn, type Burn } from './projection.js';
 import type { SessionState, TurnEvent } from './types.js';
 
 // RF-EST-01: estado por sesión. applyEvent es pura: devuelve un estado nuevo.
@@ -58,8 +59,17 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
   if (e.windowSource) s.windowSource = e.windowSource;
   s.status = 'active';
   if (e.model) {
+    // D-14: se recuerda cuándo cambió el modelo (R3 lista el cambio aunque haya ocurrido 2 turnos antes).
+    if (prev && phaseOf(e) === 'response' && s.lastModel && s.lastModel !== e.model) {
+      s.modelBefore = s.lastModel;
+      s.modelChangedAtCall = s.calls + 1;
+    }
     s.model = e.model;
     s.lastModel = e.model;
+  }
+  if (e.systemHash) {
+    if (s.systemHash && s.systemHash !== e.systemHash) s.systemChangedAtCall = s.calls + 1;
+    s.systemHash = e.systemHash;
   }
   if (e.contextWindow) s.contextWindow = e.contextWindow;
   if (e.cacheTtlMs) s.cacheTtlMs = e.cacheTtlMs;
@@ -93,6 +103,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
   s.totals.cacheWrite += e.tokens.cacheWrite ?? 0;
   s.totals.reasoning += e.tokens.reasoning ?? 0;
   s.lastOutputTokens = e.tokens.output;
+  pushBurnSample(s, Date.parse(e.ts), promptTotal(e) + e.tokens.output);
   if (e.promptTokens !== undefined) s.lastPromptTokens = e.promptTokens;
 
   const ratio = cacheRatio(e);
@@ -102,7 +113,7 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
   }
 
   for (const tc of e.toolCalls ?? []) {
-    s.recentToolCalls.push(tc);
+    s.recentToolCalls.push({ ...tc, ts: tc.ts ?? e.ts });
     s.toolLastUsedTurn[tc.name] = s.turns;
   }
   if (s.recentToolCalls.length > MAX_RECENT_TOOL_CALLS) {
@@ -140,8 +151,9 @@ function applySidechain(prev: SessionState | undefined, e: TurnEvent): SessionSt
   s.totals.cacheRead += e.tokens.cacheRead ?? 0;
   s.totals.cacheWrite += e.tokens.cacheWrite ?? 0;
   s.totals.reasoning += e.tokens.reasoning ?? 0;
+  pushBurnSample(s, Date.parse(e.ts), promptTotal(e) + e.tokens.output);
   for (const tc of e.toolCalls ?? []) {
-    s.recentToolCalls.push(tc);
+    s.recentToolCalls.push({ ...tc, ts: tc.ts ?? e.ts });
     s.toolLastUsedTurn[tc.name] = s.turns;
   }
   if (s.recentToolCalls.length > MAX_RECENT_TOOL_CALLS) {
@@ -167,9 +179,15 @@ export interface SessionView {
   status: SessionState['status'];
   /** Extensión: origen de contextWindow. */
   windowSource?: SessionState['windowSource'];
+  /** D-5 (CP-018.1): ritmo de la sesión, media móvil de 15 min. */
+  burn?: Burn;
 }
 
-export function toView(s: SessionState): SessionView {
+function phaseOf(e: TurnEvent): 'prompt' | 'response' {
+  return e.phase ?? 'response';
+}
+
+export function toView(s: SessionState, now = Date.now()): SessionView {
   const last = s.cacheRatios.at(-1);
   return {
     sessionId: s.sessionId,
@@ -186,5 +204,6 @@ export function toView(s: SessionState): SessionView {
     lastTurnAt: s.lastTurnAt,
     status: s.status,
     windowSource: s.windowSource,
+    burn: sessionBurn(s, now),
   };
 }

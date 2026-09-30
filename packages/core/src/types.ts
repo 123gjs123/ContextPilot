@@ -19,6 +19,16 @@ export interface ToolCall {
   resultTokens: number;
   failed: boolean;
   argsHash: string;
+  /** Extensión (D-13): ts de la llamada (lo completa applyEvent con el ts del evento). */
+  ts?: string;
+}
+
+/** Herramienta/servidor MCP disponible en la sesión (R6). */
+export interface AvailableTool {
+  name: string;
+  definitionTokens: number;
+  /** true = costo estimado (Claude Code: nombres diferidos / instrucciones MCP), no la definición exacta. */
+  estimated?: boolean;
 }
 
 export interface TurnEvent {
@@ -48,7 +58,9 @@ export interface TurnEvent {
   /** Extensión: tokens del prompt del usuario en este turno (para R7/W4). */
   promptTokens?: number;
   /** Extensión: herramientas/MCP disponibles en la sesión (R6). */
-  toolsAvailable?: { name: string; definitionTokens: number }[];
+  toolsAvailable?: AvailableTool[];
+  /** Extensión (D-14): hash del system prompt del pedido (proxy), para el diff de R3. */
+  systemHash?: string;
   /** Extensión: TTL de caché observado para este turno (ms). */
   cacheTtlMs?: number;
   /** Extensión: modo caro activo en web (razonamiento extendido, deep research). */
@@ -120,7 +132,7 @@ export interface SessionState {
   lastIdleMs: number;
   /** Últimas llamadas a herramientas (ventana acotada). */
   recentToolCalls: ToolCall[];
-  toolsAvailable: { name: string; definitionTokens: number }[];
+  toolsAvailable: AvailableTool[];
   toolLastUsedTurn: Record<string, number>;
   blockCounts: Record<string, { count: number; tokens: number }>;
   attachmentCounts: Record<string, number>;
@@ -135,6 +147,14 @@ export interface SessionState {
   status: 'active' | 'idle' | 'closed';
   /** Extensión: origen de contextWindow (DECISIONS «ventanas»). */
   windowSource?: WindowSource;
+  /** Extensión (D-5): muestras recientes de consumo {ts ms, tokens} para el ritmo de la sesión (≤ 60 min). */
+  burnSamples?: { ts: number; tokens: number }[];
+  /** Extensión (D-14): hash del system prompt (proxy) y llamada (`calls`) en que cambió por última vez. */
+  systemHash?: string;
+  systemChangedAtCall?: number;
+  /** Extensión (D-14): llamada en que cambió el modelo por última vez y modelo anterior. */
+  modelChangedAtCall?: number;
+  modelBefore?: string;
 }
 
 export interface RuleThresholds {
@@ -147,12 +167,22 @@ export interface RuleSettings {
   cooldownMs: number;
 }
 
+/** Ventana de un plan de suscripción (CP-055.1): `{hours: 5, limit}` o `{days: 7, limit}`. */
+export interface PlanWindow {
+  hours?: number;
+  days?: number;
+  /** Límite de la ventana en tokens (o unidades: % cuando la fuente es plan-usage de Claude Desktop). */
+  limit: number;
+}
+
 export interface PlanProfile {
   provider: Provider;
   kind: 'api' | 'subscription';
   /** Suscripción: tokens (o unidades) por ventana y duración de la ventana. */
   windowMs?: number;
   windowBudgetTokens?: number;
+  /** Suscripción (aditivo, D-15): varias ventanas (5 h + 7 días). Si está, se evalúan todas. */
+  windows?: PlanWindow[];
   /** API: presupuesto USD por día y precios por millón. */
   dailyBudgetUsd?: number;
   pricePerMTokIn?: number;
@@ -178,8 +208,20 @@ export interface RuleContext {
   thresholds: RuleThresholds;
   now: number;
   /** Historia de consumo agregada por proveedor (R10). */
-  usageWindow?: { provider: Provider; points: { ts: number; tokens: number }[] };
+  usageWindow?: UsageWindow;
   plan?: PlanProfile;
+  /** D-11 (W2): subidas del mismo adjunto en el sitio (todas las conversaciones, 7 días), por hash. */
+  siteAttachmentCounts?: Record<string, number>;
+}
+
+/**
+ * Serie de consumo por proveedor. `byWindow` (opcional) = serie propia por ventana del plan, con la
+ * clave `<horas>h` (p. ej. plan-usage de Claude Desktop informa 5 h y 7 días por separado, en %).
+ */
+export interface UsageWindow {
+  provider: Provider;
+  points: { ts: number; tokens: number }[];
+  byWindow?: Record<string, { ts: number; tokens: number }[]>;
 }
 
 export interface RuleResult {
@@ -199,6 +241,11 @@ export interface Rule {
   defaultCooldownMs: number;
   /** Se evalúa en 'prompt', 'response' o ambos. */
   on: ('prompt' | 'response')[];
+  /**
+   * D-1: 'account' = señal de cuenta (R10): una sugerencia por proveedor con cooldown y lugar visible
+   * propios (sessionId `account:<proveedor>`), fuera del cupo por sesión. Default 'session'.
+   */
+  scope?: 'session' | 'account';
   evaluate(ctx: RuleContext): RuleResult | null;
 }
 

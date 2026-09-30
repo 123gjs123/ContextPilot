@@ -2,15 +2,16 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { redact, toView, validateTurnEvent, type Feedback, type SessionView, type Suggestion } from '@contextpilot/core';
+import { redact, shortAction, toView, validateTurnEvent, type Feedback, type SessionView, type Suggestion } from '@contextpilot/core';
 import type { Daemon } from './daemon.js';
 import { HandoffError } from './handoff.js';
 import type { IncomingEvent } from './pipeline.js';
 import { computeStats, parseRange } from './stats.js';
 
 // API local (docs/API.md): node:http + ws, sin framework. Sólo 127.0.0.1.
-// Auth: X-CP-Token salvo GET /health, /proxy/*, POST /otlp/v1/logs. Origin: sólo chrome-extension://*,
-// file:// (Origin «null») o ausente; cualquier otro → 403.
+// Auth: X-CP-Token salvo GET /health, /proxy/*, POST /otlp/v1/logs. Origin: chrome-extension://<id>
+// (con `daemon.allowedExtensionIds` configurado sólo esos ids; vacío = cualquiera, D-9), file://
+// (Origin «null») o ausente; cualquier otro → 403.
 
 const MAX_BODY = 10 * 1024 * 1024;
 const FEEDBACKS: Feedback[] = ['accepted', 'dismissed', 'snoozed'];
@@ -23,9 +24,14 @@ export type ServerMsg =
   | { type: 'suggestion-cleared'; data: { id: string; sessionId: string; feedback?: string } }
   | { type: 'health'; data: unknown[] };
 
-export function originAllowed(origin: string | undefined): boolean {
+export function originAllowed(origin: string | undefined, allowedExtensionIds: readonly string[] = []): boolean {
   if (origin === undefined || origin === '') return true;
-  return origin.startsWith('chrome-extension://') || origin === 'null' || origin.startsWith('file://');
+  if (origin === 'null' || origin.startsWith('file://')) return true;
+  if (!origin.startsWith('chrome-extension://')) return false;
+  // D-9 / CP-022.4: con ids configurados, sólo esas extensiones.
+  if (!allowedExtensionIds.length) return true;
+  const id = origin.slice('chrome-extension://'.length).replace(/\/.*$/, '');
+  return allowedExtensionIds.includes(id);
 }
 
 function isLoopback(req: IncomingMessage): boolean {
@@ -90,23 +96,26 @@ function readJson(req: IncomingMessage): Promise<any> {
   });
 }
 
-/** Línea de statusline (CP-025.3): `ctx 68% · cache 91% · ⚠ /compact`, ≤ 80 columnas. */
-export function statuslineText(view: SessionView | undefined, visible: Suggestion | undefined, broken: boolean): string {
+/**
+ * Línea de statusline (CP-025.3): `ctx 68% · cache 91% · ⚠ /compact`, ≤ 80 columnas.
+ * D-3: la acción corta sale de la regla (`shortAction` del core), nunca del texto a copiar.
+ * D-1: la sugerencia de cuenta del proveedor (R10) se agrega al final como aviso de cuenta.
+ */
+export function statuslineText(
+  view: SessionView | undefined,
+  visible: Suggestion | undefined,
+  broken: boolean,
+  account?: Suggestion,
+): string {
   if (!view || broken) return 'ContextPilot: sin datos';
   const pct = (r: number) => `${Math.round(r * 100)}%`;
   const est = view.estimated ? '≈' : '';
   const parts = [`ctx ${est}${pct(view.contextPct)}`];
   if (view.cachePct !== null && view.cachePct !== undefined) parts.push(`cache ${est}${pct(view.cachePct)}`);
   if (visible && !visible.quiet) parts.push(`⚠ ${shortAction(visible)}`);
+  if (account && !account.quiet) parts.push(`⏳ ${shortAction(account)}`);
   const line = parts.join(' · ');
   return line.length > 80 ? `${line.slice(0, 79)}…` : line;
-}
-
-function shortAction(s: Suggestion): string {
-  const copy = s.actions.find((a) => a.kind === 'copy' && a.payload);
-  if (copy) return copy.payload!.split(' ')[0]!;
-  if (s.actions.some((a) => a.kind === 'handoff')) return 'traspaso';
-  return s.title.length > 40 ? `${s.title.slice(0, 39)}…` : s.title;
 }
 
 export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; broadcast(msg: ServerMsg): void } {
@@ -138,7 +147,7 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
     const method = req.method ?? 'GET';
     const origin = req.headers.origin;
 
-    if (!originAllowed(origin)) return send(res, 403);
+    if (!originAllowed(origin, d.config.daemon.allowedExtensionIds)) return send(res, 403);
     if (origin) {
       res.setHeader('access-control-allow-origin', origin);
       res.setHeader('vary', 'Origin');
@@ -202,6 +211,11 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
       );
     }
 
+    // D-1: sugerencias de cuenta vigentes (una por proveedor) para el banner de cuenta de las UIs.
+    if (method === 'GET' && path === '/account') {
+      return send(res, 200, { suggestions: d.pipeline.accountSuggestions(), burn: d.burnByProvider() });
+    }
+
     m = /^\/sessions\/([^/]+)$/.exec(path);
     if (method === 'GET' && m) {
       const id = decodeURIComponent(m[1]!);
@@ -210,7 +224,7 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
       return send(res, 200, {
         view: toView(s),
         timeline: d.storage.timeline(id),
-        suggestions: d.storage.listSuggestions({ sessionId: id }),
+        suggestions: d.storage.listSuggestions({ sessionId: id }).map((s) => d.pipeline.decorate(s)),
       });
     }
 
@@ -218,7 +232,8 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
     if (method === 'GET' && m) {
       const id = decodeURIComponent(m[1]!);
       const s = d.pipeline.getSession(id);
-      const text = statuslineText(s ? toView(s) : undefined, s ? d.pipeline.visibleFor(id) : undefined, s ? d.health.isBroken(s.source) : false);
+      const account = s ? d.pipeline.visibleFor(`account:${s.provider}`) : undefined;
+      const text = statuslineText(s ? toView(s) : undefined, s ? d.pipeline.visibleFor(id) : undefined, s ? d.health.isBroken(s.source) : false, account);
       return send(res, 200, text);
     }
 
@@ -226,10 +241,12 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
       return send(
         res,
         200,
-        d.storage.listSuggestions({
-          sessionId: url.searchParams.get('sessionId') || undefined,
-          active: url.searchParams.get('active') === 'true',
-        }),
+        d.storage
+          .listSuggestions({
+            sessionId: url.searchParams.get('sessionId') || undefined,
+            active: url.searchParams.get('active') === 'true',
+          })
+          .map((s) => d.pipeline.decorate(s)),
       );
     }
 
@@ -272,7 +289,8 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
 
     if (method === 'GET' && path === '/stats') {
       const r = parseRange(url.searchParams.get('from'), url.searchParams.get('to'));
-      return send(res, 200, { ...computeStats(d.storage, r.from, r.to), planUsage: d.planUsage?.latest() });
+      // D-5: ritmo y proyección por proveedor (`burn`).
+      return send(res, 200, { ...computeStats(d.storage, r.from, r.to), planUsage: d.planUsage?.latest(), burn: d.burnByProvider() });
     }
 
     if (method === 'GET' && path === '/team/export') {
@@ -289,7 +307,7 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
       socket.end('HTTP/1.1 404 Not Found\r\n\r\n');
       return;
     }
-    if (!originAllowed(req.headers.origin)) {
+    if (!originAllowed(req.headers.origin, d.config.daemon.allowedExtensionIds)) {
       socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
       return;
     }

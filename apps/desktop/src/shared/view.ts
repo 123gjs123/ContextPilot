@@ -1,6 +1,6 @@
 import { fmtPct, fmtTokens } from '@contextpilot/core';
 import { activeSessions, visibleSuggestion, type DesktopState } from './store.js';
-import type { AdapterHealth, SessionRow, SessionView, Suggestion, SuggestionRow, TrayColor } from './types.js';
+import type { AccountRow, AdapterHealth, SessionRow, SessionView, Suggestion, SuggestionRow, TrayColor } from './types.js';
 
 // View-models del tray y del overlay (CP-046). Puros: se testean sin Electron.
 
@@ -46,6 +46,8 @@ function worst(a: TrayColor, b: TrayColor): TrayColor {
 export function trayColor(state: DesktopState, now: number): TrayColor {
   if (state.connection !== 'connected') return 'gray';
   let color: TrayColor = 'gray';
+  // D-1: el aviso de cuenta (R10) también colorea el tray.
+  for (const a of accountSuggestions(state, now)) color = worst(color, SEVERITY_TO_COLOR[a.severity]);
   for (const s of activeSessions(state, now)) {
     if (sessionHasNoData(s, state.health)) continue;
     let c: TrayColor = s.contextWindow ? meterLevel(s.contextPct) : 'green';
@@ -71,6 +73,19 @@ export function suggestionRow(s: Suggestion): SuggestionRow {
     savingText: s.estimatedSavingTokens ? `ahorro ≈${fmtTokens(s.estimatedSavingTokens)} tokens` : undefined,
     actions: s.actions.map((a, index) => ({ index, kind: a.kind, label: a.label })),
   };
+}
+
+/** D-1: sugerencias de cuenta vigentes (sessionId `account:<proveedor>`), no silenciosas. */
+export function accountSuggestions(state: DesktopState, now: number): Suggestion[] {
+  return Object.keys(state.suggestions)
+    .filter((sid) => sid.startsWith('account:'))
+    .map((sid) => visibleSuggestion(state, sid, now))
+    .filter((s): s is Suggestion => !!s);
+}
+
+/** D-1: filas del banner de cuenta del overlay (una por proveedor). */
+export function accountRows(state: DesktopState, now: number): AccountRow[] {
+  return accountSuggestions(state, now).map((s) => ({ provider: s.sessionId.slice('account:'.length), suggestion: suggestionRow(s) }));
 }
 
 export function sessionRows(state: DesktopState, now: number): SessionRow[] {

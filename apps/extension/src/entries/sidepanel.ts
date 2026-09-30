@@ -25,6 +25,10 @@ root.addEventListener('click', (e) => {
   if (t.id === 'open-options') void chrome.runtime.openOptionsPage();
   const act = t.dataset.act;
   const id = t.dataset.id;
+  if (act === 'dismiss-account' && id && last?.account) {
+    void chrome.runtime.sendMessage({ type: 'cp:feedback', id, sessionId: last.account.sessionId, feedback: 'dismissed' } satisfies ToBackground).then(refresh);
+    return;
+  }
   if (act && id && last?.current && last.tab?.sessionId) {
     const s = last.current;
     if (act === 'dismiss') {

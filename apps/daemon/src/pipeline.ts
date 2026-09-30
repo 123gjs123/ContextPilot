@@ -3,17 +3,21 @@ import {
   applyEvent,
   cacheRatio,
   contextWindowFor,
+  isAccountSessionId,
+  planWindows,
   R2,
   redact,
   RuleEngine,
   toView,
   ulid,
   type Feedback,
+  type Provider,
   type SessionState,
   type SessionView,
   type Source,
   type Suggestion,
   type TurnEvent,
+  type UsageWindow,
 } from '@contextpilot/core';
 import { adapterEnabled, type DaemonConfig } from './config.js';
 import type { HealthRegistry } from './health.js';
@@ -29,6 +33,20 @@ const R2_MARGIN_MS = 1000;
 const R2_STALE_MS = 30 * 60_000;
 const R2_SOURCES: Source[] = ['claude-code', 'codex', 'gemini-cli', 'proxy'];
 const USAGE_LOOKBACK_MS = 24 * 3_600_000;
+/** D-11: ventana del índice de adjuntos por sitio (CP-017.2). */
+export const ATTACHMENT_WINDOW_MS = 7 * 86_400_000;
+const ATTACHMENT_MAX_PER_HASH = 20;
+const ATTACHMENT_SETTING = 'attachmentIndex';
+
+/** Índice de adjuntos por sitio: sitio → hash → timestamps de subida (ms). Sólo hashes (RNF-01). */
+export type AttachmentIndex = Record<string, Record<string, number[]>>;
+
+export interface PipelineHooks {
+  /** Serie exacta del proveedor para R10 (plan-usage de Claude Desktop), si hay. */
+  planUsage?: (provider: string) => UsageWindow | undefined;
+  /** D-2: foco de `/compact` calculado en memoria desde el transcript (nunca se persiste). */
+  focusFor?: (sessionId: string) => string | undefined;
+}
 
 export type ClearedReason = Feedback | 'expired';
 
@@ -51,7 +69,13 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
   private visible = new Map<string, string>();
   private expiry = new Map<string, NodeJS.Timeout>();
   private r2Timers = new Map<string, NodeJS.Timeout>();
+  /** D-18: pausa (lastTurnAt) en la que el temporizador ya emitió R2, por sesión. */
+  private r2Fired = new Map<string, string>();
+  /** D-2: versión decorada (con foco) de sugerencias publicadas; sólo memoria. */
+  private decorated = new Map<string, Suggestion>();
+  private attachments: AttachmentIndex;
   private disposed = false;
+  private hooks: PipelineHooks;
 
   constructor(
     private storage: Storage,
@@ -59,10 +83,11 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     private health: HealthRegistry,
     private getConfig: () => DaemonConfig,
     private log: Logger,
-    /** Serie exacta del proveedor para R10 (plan-usage de Claude Desktop), si hay. */
-    private planUsage?: (provider: string) => { provider: 'anthropic'; points: { ts: number; tokens: number }[] } | undefined,
+    hooks: PipelineHooks | PipelineHooks['planUsage'] = {},
   ) {
     super();
+    this.hooks = typeof hooks === 'function' ? { planUsage: hooks } : hooks;
+    this.attachments = storage.getSetting<AttachmentIndex>(ATTACHMENT_SETTING) ?? {};
     engine.loadDismissStreaks(storage.getSetting<Record<string, number>>('dismissStreaks') ?? {});
     const now = Date.now();
     for (const s of storage.loadSessions(now - USAGE_LOOKBACK_MS)) this.sessions.set(s.sessionId, s);
@@ -85,14 +110,14 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     return [...this.sessions.values()]
       .filter((s) => now - (Date.parse(s.lastTurnAt) || 0) < ACTIVE_MS)
       .sort((a, b) => Date.parse(b.lastTurnAt) - Date.parse(a.lastTurnAt))
-      .map(toView);
+      .map((s) => toView(s));
   }
 
   allViews(): SessionView[] {
     const seen = new Map<string, SessionState>();
     for (const s of this.storage.listSessions()) seen.set(s.sessionId, s);
     for (const s of this.sessions.values()) seen.set(s.sessionId, s);
-    return [...seen.values()].sort((a, b) => Date.parse(b.lastTurnAt) - Date.parse(a.lastTurnAt)).map(toView);
+    return [...seen.values()].sort((a, b) => Date.parse(b.lastTurnAt) - Date.parse(a.lastTurnAt)).map((s) => toView(s));
   }
 
   visibleFor(sessionId: string, now = Date.now()): Suggestion | undefined {
@@ -100,11 +125,22 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     if (!id) return undefined;
     const s = this.storage.getSuggestion(id);
     if (!s || s.feedback || Date.parse(s.expiresAt) <= now) return undefined;
-    return s;
+    return this.decorate(s);
   }
 
   activeSuggestions(now = Date.now()): Suggestion[] {
-    return this.storage.listSuggestions({ active: true, now });
+    return this.storage.listSuggestions({ active: true, now }).map((s) => this.decorate(s));
+  }
+
+  /** D-1: sugerencias de cuenta vigentes (una por proveedor, sessionId `account:<proveedor>`). */
+  accountSuggestions(now = Date.now()): Suggestion[] {
+    return this.activeSuggestions(now).filter((s) => isAccountSessionId(s.sessionId));
+  }
+
+  /** D-2: devuelve la versión con foco si existe (en memoria); si no, la persistida. */
+  decorate<T extends Suggestion>(s: T): T {
+    const d = this.decorated.get(s.id);
+    return d ? { ...s, actions: d.actions } : s;
   }
 
   // ---------- ingesta ----------
@@ -130,11 +166,16 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
       if (e.source !== 'claude-code' && e.source !== 'codex' && e.source !== 'gemini-cli') this.health.seen(e.source, undefined, e.ts);
 
       const now = opts.replay ? Date.parse(e.ts) || Date.now() : Date.now();
-      const out = this.engine.evaluate({ event: e, prev, state, now, usageWindow: this.usageWindow(e) });
+      const siteAttachmentCounts = this.countAttachments(e, prev, now);
+      // D-18: si el temporizador ya avisó R2 en esta pausa, el prompt que la cierra no lo repite.
+      const phase = e.phase ?? 'response';
+      const skipRules = phase === 'prompt' && prev && this.r2Fired.get(e.sessionId) === prev.lastTurnAt ? ['R2'] : undefined;
+      if (phase === 'response') this.r2Fired.delete(e.sessionId);
+      const out = this.engine.evaluate({ event: e, prev, state, now, usageWindow: this.usageWindow(e), siteAttachmentCounts, skipRules });
       for (const s of out.published) {
         if (opts.replay && Date.parse(s.expiresAt) <= Date.now()) continue;
-        this.publish(s);
-        published.push(s);
+        const shown = this.publish(s, e.source);
+        published.push(shown);
       }
     }
     for (const id of touched) {
@@ -165,16 +206,55 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     return e;
   }
 
-  private usageWindow(e: TurnEvent) {
-    const plan = this.engine.planFor(e.provider);
-    if (!plan) return undefined;
-    const exact = this.planUsage?.(e.provider);
-    if (exact) return exact;
-    const from = Date.parse(e.ts) - Math.max(plan.windowMs ?? 0, USAGE_LOOKBACK_MS);
-    return { provider: e.provider, points: this.storage.usagePoints(e.provider, from) };
+  /**
+   * D-11 (W2): registra las subidas del evento en el índice del sitio (7 días, todas las conversaciones)
+   * y devuelve cuántas veces se subió cada hash. Se cuenta una vez por subida, como applyEvent.
+   */
+  private countAttachments(e: TurnEvent, prev: SessionState | undefined, now: number): Record<string, number> | undefined {
+    if (!e.attachments?.length || (e.source !== 'web' && e.source !== 'desktop')) return undefined;
+    const phase = e.phase ?? 'response';
+    const isUpload = phase === 'prompt' || prev?.lastPhase !== 'prompt';
+    const site = (this.attachments[e.client] ??= {});
+    const from = now - ATTACHMENT_WINDOW_MS;
+    const out: Record<string, number> = {};
+    for (const a of e.attachments) {
+      const list = (site[a.hash] ?? []).filter((t) => t >= from);
+      if (isUpload) list.push(now);
+      site[a.hash] = list.slice(-ATTACHMENT_MAX_PER_HASH);
+      out[a.hash] = site[a.hash]!.length;
+    }
+    if (isUpload) this.persistAttachments(from);
+    return out;
   }
 
-  private publish(s: Suggestion): void {
+  private persistAttachments(from: number): void {
+    for (const [site, hashes] of Object.entries(this.attachments)) {
+      for (const [h, list] of Object.entries(hashes)) {
+        const keep = list.filter((t) => t >= from);
+        if (keep.length) hashes[h] = keep;
+        else delete hashes[h];
+      }
+      if (!Object.keys(hashes).length) delete this.attachments[site];
+    }
+    this.storage.setSetting(ATTACHMENT_SETTING, this.attachments);
+  }
+
+  private usageWindow(e: TurnEvent): UsageWindow | undefined {
+    return this.usageWindowFor(e.provider, Date.parse(e.ts));
+  }
+
+  /** Serie de consumo del proveedor para R10 y /stats.burn (plan-usage exacto si hay; si no, turnos locales). */
+  usageWindowFor(provider: Provider, nowMs = Date.now()): UsageWindow | undefined {
+    const plan = this.engine.planFor(provider);
+    if (!plan) return undefined;
+    const exact = this.hooks.planUsage?.(provider);
+    if (exact) return exact;
+    const longest = Math.max(plan.windowMs ?? 0, ...planWindows(plan).map((w) => w.ms), USAGE_LOOKBACK_MS);
+    return { provider, points: this.storage.usagePoints(provider, nowMs - longest) };
+  }
+
+  /** Publica y devuelve la versión que ven las UIs (con foco efímero si aplica). */
+  private publish(s: Suggestion, source?: Source): Suggestion {
     const prevId = this.visible.get(s.sessionId);
     if (prevId && prevId !== s.id) {
       // RNF-13: la nueva (de mayor prioridad) reemplaza a la visible.
@@ -184,7 +264,30 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     }
     this.storage.insertSuggestion(s);
     this.track(s);
-    this.emit('suggestion', s);
+    const shown = this.withFocus(s, source);
+    this.emit('suggestion', shown);
+    return shown;
+  }
+
+  /**
+   * D-2 / CP-010.1: R1 en Claude Code → `/compact <foco>` con archivos/herramientas de los últimos 5
+   * prompts. El foco se calcula en memoria al publicar y NO se persiste (la fila guarda `/compact`).
+   */
+  private withFocus(s: Suggestion, source?: Source): Suggestion {
+    if (s.ruleId !== 'R1' || source !== 'claude-code' || !this.hooks.focusFor) return s;
+    let focus: string | undefined;
+    try {
+      focus = this.hooks.focusFor(s.sessionId);
+    } catch {
+      focus = undefined;
+    }
+    if (!focus) return s;
+    const actions = s.actions.map((a) =>
+      a.kind === 'copy' && a.payload === '/compact' ? { ...a, label: 'Copiar /compact con foco', payload: `/compact ${focus}` } : a,
+    );
+    const shown = { ...s, actions };
+    this.decorated.set(s.id, shown);
+    return shown;
   }
 
   private track(s: Suggestion): void {
@@ -199,6 +302,7 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     const t = this.expiry.get(id);
     if (t) clearTimeout(t);
     this.expiry.delete(id);
+    this.decorated.delete(id);
   }
 
   private expire(s: Suggestion): void {
@@ -207,6 +311,7 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     const cur = this.storage.getSuggestion(s.id);
     if (!cur || cur.feedback || (cur.status && cur.status !== 'open')) return;
     this.storage.setStatus(s.id, 'expired');
+    this.decorated.delete(s.id);
     if (this.visible.get(s.sessionId) === s.id) this.visible.delete(s.sessionId);
     this.emit('cleared', { id: s.id, sessionId: s.sessionId, feedback: 'expired' });
   }
@@ -276,8 +381,11 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
       phase: 'prompt',
     };
     const out = this.engine.evaluate({ event: ev, prev: s, state: s, now });
-    for (const sug of out.published) this.publish(sug);
-    if (out.published.length) this.log.info(`R2 proactivo: sesión ${sessionId}`);
+    for (const sug of out.published) this.publish(sug, s.source);
+    if (out.published.some((x) => x.ruleId === 'R2')) {
+      this.r2Fired.set(sessionId, lastTurnAt);
+      this.log.info(`R2 proactivo: sesión ${sessionId}`);
+    }
   }
 
   dispose(): void {

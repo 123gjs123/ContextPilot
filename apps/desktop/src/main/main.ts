@@ -7,7 +7,7 @@ import { handoffClipboardText, planAction } from '../shared/actions.js';
 import { NotificationFilter, notificationContent } from '../shared/notify.js';
 import { findSuggestion, initialState, markHandled, reduce, setConnection, type DesktopState } from '../shared/store.js';
 import type { AppSnapshot, Feedback, HandoffResponse, PlanUsageView, ServerMsg, Suggestion, TrayColor } from '../shared/types.js';
-import { sessionRows, trayColor, trayMenuModel, trayTooltip } from '../shared/view.js';
+import { accountRows, sessionRows, trayColor, trayMenuModel, trayTooltip } from '../shared/view.js';
 import { DaemonClient } from './daemonClient.js';
 import { repoRootFrom, spawnDaemon } from './daemonSpawn.js';
 import { trayPng } from './icon.js';
@@ -77,6 +77,7 @@ function snapshot(): AppSnapshot {
     connection: state.connection,
     lastError: state.lastError,
     sessions: sessionRows(state, now),
+    account: accountRows(state, now),
     health: state.health,
     trayColor: trayColor(state, now),
     planUsage,

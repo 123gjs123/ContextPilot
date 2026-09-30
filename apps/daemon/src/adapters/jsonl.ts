@@ -12,6 +12,8 @@ export interface LineParser {
   formatVersions?: Set<string>;
   errors?: number;
   sessionId?: string;
+  /** D-2: foco en memoria para `/compact <foco>` (sólo Claude Code). */
+  focus?(): string | undefined;
 }
 
 export interface JsonlAdapterOptions {
@@ -75,6 +77,14 @@ export class JsonlAdapter {
     this.tailer.stop();
     this.parsers.clear();
     this.registered.clear();
+  }
+
+  /** D-2: foco del parser en memoria del transcript principal de la sesión (sin leer disco). */
+  focusFor(sessionId: string): string | undefined {
+    for (const [file, p] of this.parsers) {
+      if (p && this.o.sessionIdFor?.(file) === sessionId) return p.focus?.();
+    }
+    return undefined;
   }
 
   /** Lee ya lo nuevo de un archivo (hooks Stop/UserPromptSubmit aceleran la latencia). */

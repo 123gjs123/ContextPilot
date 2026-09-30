@@ -48,6 +48,12 @@ export function renderPanel(st: PanelState): string {
       ${st.tab?.capture === 'fallback-dom' ? '<div class="warn">Captura por DOM (respaldo): la red no reportó los últimos turnos.</div>' : ''}
     </div>`);
   }
+  // D-1: aviso de cuenta (límite del plan), independiente de la conversación.
+  if (st.account) {
+    const a = st.account;
+    parts.push(`<div class="card account ${esc(a.severity)}" data-account="${esc(a.sessionId)}"><div class="muted">Cuenta</div><strong>${esc(a.title)}</strong><p class="muted">${esc(a.detail)}</p>
+      <p class="row"><button type="button" data-act="dismiss-account" data-id="${esc(a.id)}">Ignorar</button></p></div>`);
+  }
   // Sugerencia vigente
   parts.push('<h2>Sugerencia</h2>');
   if (st.current) {

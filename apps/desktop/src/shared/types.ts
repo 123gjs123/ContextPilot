@@ -83,10 +83,18 @@ export interface RendererApi {
   launchClaudeDesktop(): Promise<{ ok: boolean; message: string }>;
 }
 
+/** D-1: aviso de cuenta por proveedor (R10), fuera de las sesiones. */
+export interface AccountRow {
+  provider: string;
+  suggestion: SuggestionRow;
+}
+
 export interface AppSnapshot {
   connection: Connection;
   lastError?: string;
   sessions: SessionRow[];
+  /** D-1: banner de cuenta (aditivo). */
+  account?: AccountRow[];
   health: AdapterHealth[];
   trayColor: TrayColor;
   planUsage?: PlanUsageView;

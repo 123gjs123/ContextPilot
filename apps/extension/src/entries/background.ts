@@ -6,7 +6,7 @@ import { DaemonClient, DEFAULT_DAEMON_URL, HttpError, type Settings } from '../b
 import { EventQueue } from '../bg/queue.js';
 import { StreamClient, type ServerMsg } from '../bg/stream.js';
 import type { HandoffResponse, PanelState, TabStatus, ToBackground, ToContent } from '../messages.js';
-import { siteForHost, type SiteId } from '../sites.js';
+import { SITES, siteForHost, type SiteId } from '../sites.js';
 import { webRulesFor } from '../rules.js';
 
 // --- estado ------------------------------------------------------------------------------------
@@ -284,6 +284,8 @@ async function panelState(tabId?: number): Promise<PanelState> {
     queueSize: queue.size,
   };
   if (daemon !== 'up' && daemon !== 'down') return state;
+  // D-1: la sugerencia de cuenta (R10) llega con sessionId `account:<proveedor>`.
+  if (site) state.account = current.get(`account:${SITES[site].provider}`) ?? null;
   const sid = tab?.sessionId;
   const tasks: Promise<unknown>[] = [];
   if (sid) {

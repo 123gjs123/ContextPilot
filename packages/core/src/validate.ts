@@ -113,6 +113,7 @@ export function validateTurnEvent(x: unknown, now = Date.now()): ValidateResult<
     'blocks',
     'sidechain',
     'windowSource',
+    'systemHash',
   ] as const;
   for (const k of OPTIONAL) if (x[k] !== undefined) (event as any)[k] = x[k];
   return { ok: true, event };

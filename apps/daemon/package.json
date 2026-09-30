@@ -7,7 +7,8 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "start:ca": "node ../../scripts/with-ca.mjs -- node --import tsx src/main.ts",
-    "verify:idle": "node ../../scripts/verify/idle.mjs"
+    "verify:idle": "node ../../scripts/verify/idle.mjs",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@contextpilot/core": "*",

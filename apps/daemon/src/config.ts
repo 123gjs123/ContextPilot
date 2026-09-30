@@ -17,6 +17,11 @@ export interface DaemonSettings {
   recentMs: number;
   /** Modelo para el traspaso vía CLI de Claude Code. */
   handoffModel: string;
+  /**
+   * D-9 / CP-022.4: ids de extensión aceptados en `Origin: chrome-extension://<id>`. Vacío = cualquier
+   * extensión con el token (permisivo, con aviso en log y /health) hasta la decisión humana H-5.
+   */
+  allowedExtensionIds: string[];
 }
 
 export type DaemonConfig = Config & { schemaVersion?: number; daemon: DaemonSettings };
@@ -37,6 +42,7 @@ export function defaultDaemonConfig(): DaemonConfig {
       geminiOutfile: join(homedir(), '.gemini', 'telemetry.log'),
       recentMs: 30 * 60_000,
       handoffModel: 'haiku',
+      allowedExtensionIds: [],
     },
   };
 }
@@ -100,6 +106,12 @@ export function validateConfigPatch(p: unknown): string | null {
     if (d.geminiOutfile !== undefined && typeof d.geminiOutfile !== 'string') return 'daemon.geminiOutfile: texto';
     if (d.recentMs !== undefined && typeof d.recentMs !== 'number') return 'daemon.recentMs: número';
     if (d.handoffModel !== undefined && typeof d.handoffModel !== 'string') return 'daemon.handoffModel: texto';
+    if (
+      d.allowedExtensionIds !== undefined &&
+      !(Array.isArray(d.allowedExtensionIds) && d.allowedExtensionIds.every((x: unknown) => typeof x === 'string' && /^[a-p]{32}$/.test(x)))
+    ) {
+      return 'daemon.allowedExtensionIds: arreglo de ids de extensión (32 letras a-p)';
+    }
   }
   return null;
 }
@@ -112,7 +124,18 @@ export function validatePlan(p: any): string | null {
   for (const k of ['windowMs', 'windowBudgetTokens', 'dailyBudgetUsd', 'pricePerMTokIn', 'pricePerMTokOut']) {
     if (p[k] !== undefined && !(typeof p[k] === 'number' && p[k] >= 0)) return k;
   }
-  if (p.kind === 'subscription' && (!p.windowMs || !p.windowBudgetTokens)) return 'windowMs/windowBudgetTokens';
+  if (p.windows !== undefined) {
+    // CP-055.1 / D-15: `windows: [{hours: 5, limit}, {days: 7, limit}]`.
+    if (!Array.isArray(p.windows) || !p.windows.length) return 'windows: arreglo no vacío';
+    for (const [i, w] of (p.windows as any[]).entries()) {
+      if (!w || typeof w !== 'object') return `windows[${i}]`;
+      const hasH = typeof w.hours === 'number' && w.hours > 0;
+      const hasD = typeof w.days === 'number' && w.days > 0;
+      if (!hasH && !hasD) return `windows[${i}].hours/days`;
+      if (!(typeof w.limit === 'number' && w.limit > 0)) return `windows[${i}].limit`;
+    }
+  }
+  if (p.kind === 'subscription' && !p.windows && (!p.windowMs || !p.windowBudgetTokens)) return 'windowMs/windowBudgetTokens o windows';
   if (p.kind === 'api' && (!p.dailyBudgetUsd || !p.pricePerMTokIn)) return 'dailyBudgetUsd/pricePerMTokIn';
   return null;
 }
@@ -141,25 +164,46 @@ export interface LoadedConfig {
   error?: string;
 }
 
-/** CP-054.4: config inválida en disco → se usa la default (última válida) y se informa el error. */
+/** Copia de la última config válida (CP-054.4 / D-15), junto a config.json. */
+export function lastValidPath(file: string): string {
+  return `${file}.last-valid`;
+}
+
+function readValid(file: string, base: DaemonConfig): { config?: DaemonConfig; error?: string } {
+  try {
+    const raw = migrateConfig(JSON.parse(readFileSync(file, 'utf8')));
+    const err = validateConfigPatch(raw);
+    if (err) return { error: `inválido: ${err}` };
+    return { config: mergeDaemonConfig(base, raw) };
+  } catch (e) {
+    return { error: `ilegible: ${(e as Error).message}` };
+  }
+}
+
+/**
+ * CP-054.4 / D-15: config inválida en disco → se usa la ÚLTIMA VÁLIDA (`config.json.last-valid`, que
+ * se escribe en cada carga o guardado correcto) y health lo informa; sin copia válida, los defaults.
+ * El archivo inválido no se pisa: el usuario puede corregirlo.
+ */
 export function loadConfig(file: string): LoadedConfig {
   const base = defaultDaemonConfig();
   if (!existsSync(file)) {
     writeAtomic(file, JSON.stringify(base, null, 2));
     return { config: base };
   }
-  try {
-    const raw = migrateConfig(JSON.parse(readFileSync(file, 'utf8')));
-    const err = validateConfigPatch(raw);
-    if (err) return { config: base, error: `config.json inválido: ${err}` };
-    return { config: mergeDaemonConfig(base, raw) };
-  } catch (e) {
-    return { config: base, error: `config.json ilegible: ${(e as Error).message}` };
+  const r = readValid(file, base);
+  if (r.config) {
+    writeAtomic(lastValidPath(file), JSON.stringify(r.config, null, 2));
+    return { config: r.config };
   }
+  const backup = existsSync(lastValidPath(file)) ? readValid(lastValidPath(file), base).config : undefined;
+  const using = backup ? 'se usa la última válida' : 'se usan los valores por defecto';
+  return { config: backup ?? base, error: `config.json ${r.error} (${using})` };
 }
 
 export function saveConfig(file: string, c: DaemonConfig): void {
   writeAtomic(file, JSON.stringify(c, null, 2));
+  writeAtomic(lastValidPath(file), JSON.stringify(c, null, 2));
 }
 
 export function adapterEnabled(c: DaemonConfig, name: string): boolean {

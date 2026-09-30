@@ -2,9 +2,10 @@ import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { aggregateTeam, RuleEngine, type AdapterHealth, type Provider } from '@contextpilot/core';
+import { aggregateTeam, projectPlan, RuleEngine, type AdapterHealth, type Projection, type Provider } from '@contextpilot/core';
 import { createClaudeCodeAdapter, createCodexAdapter, defaultClaudeProjectsDir, defaultCodexSessionsDir } from './adapters/cli.js';
 import { GeminiAdapter } from './adapters/gemini.js';
+import { configuredMcpServers } from './adapters/mcpConfig.js';
 import { PERCENT_PLAN, PlanUsageAdapter } from './adapters/planUsage.js';
 import type { JsonlAdapter } from './adapters/jsonl.js';
 import {
@@ -22,7 +23,7 @@ import { HealthRegistry } from './health.js';
 import { createLogger, type Logger } from './log.js';
 import { encodeProjectDir, ensureDirs, loadOrCreateToken, resolvePaths, type DaemonPaths } from './paths.js';
 import { Pipeline } from './pipeline.js';
-import { Proxy, upstreamsFromEnv } from './proxy.js';
+import { Proxy, upstreamsFromEnv, type ProxyOptions } from './proxy.js';
 import { createApp, redactPrompt, type ServerMsg } from './server.js';
 import { Storage } from './storage.js';
 
@@ -30,6 +31,20 @@ import { Storage } from './storage.js';
 
 export const VERSION = '0.1.0';
 const DAY = 86_400_000;
+const BURN_MS = 15 * 60_000;
+const PROVIDERS: Provider[] = ['anthropic', 'openai', 'google'];
+
+/** D-5: ritmo y proyección por proveedor (GET /stats `burn`, GET /account). */
+export interface ProviderBurn {
+  provider: Provider;
+  /** Tokens por minuto de todas las sesiones del proveedor, media móvil de 15 min (CP-018.1). */
+  tokensPerMin: number;
+  tokensPerHour: number;
+  /** Proyección contra las ventanas del plan (unidades del plan: tokens o % si viene de plan-usage). */
+  projections: Projection[];
+  /** 'plan-usage' = serie exacta de Claude Desktop; 'local' = turnos observados por ContextPilot. */
+  source: 'plan-usage' | 'local' | 'none';
+}
 
 export interface DaemonOptions {
   home: string;
@@ -45,6 +60,8 @@ export interface DaemonOptions {
   rootRetryMs?: number;
   /** Sin archivo de log (tests). */
   quiet?: boolean;
+  /** Tests (D-10): extractor de uso del proxy reemplazable. */
+  proxyExtractorFor?: ProxyOptions['extractorFor'];
   echoLog?: boolean;
 }
 
@@ -98,10 +115,14 @@ export class Daemon {
     this.retentionTimer.unref();
 
     const engine = new RuleEngine(this.effectiveConfig());
-    this.pipeline = new Pipeline(this.storage, engine, this.health, () => this.config, this.log, (p) =>
-      p === 'anthropic' ? this.planUsage?.usageWindow() : undefined,
-    );
+    this.pipeline = new Pipeline(this.storage, engine, this.health, () => this.config, this.log, {
+      planUsage: (p) => (p === 'anthropic' ? this.planUsage?.usageWindow() : undefined),
+      // D-2: foco de /compact desde el parser en memoria del transcript de la sesión.
+      focusFor: (sid) => this.claude?.focusFor(sid),
+    });
     this.proxy = new Proxy({
+      env: this.env,
+      extractorFor: this.o.proxyExtractorFor,
       upstreams: this.o.upstreams ?? upstreamsFromEnv(this.env),
       pipeline: this.pipeline,
       health: this.health,
@@ -133,7 +154,62 @@ export class Daemon {
     this.health.set('hooks', { status: 'no-data', detail: 'sin hooks recibidos' });
     this.health.set('web', { status: 'no-data', detail: 'sin eventos de la extensión' });
     this.health.set('desktop', { status: 'no-data', detail: 'sin eventos de desktop' });
+    this.refreshSecurityHealth();
+    this.refreshR6Health();
     this.reconcileAdapters();
+  }
+
+  /** D-9: sin `allowedExtensionIds`, cualquier extensión con el token es aceptada: aviso en log y health. */
+  refreshSecurityHealth(): void {
+    const ids = this.config.daemon.allowedExtensionIds ?? [];
+    if (ids.length) {
+      this.health.set('origin', { status: 'ok', detail: `extensiones permitidas: ${ids.length}` });
+    } else {
+      this.health.set('origin', {
+        status: 'ok',
+        detail: 'aviso: allowedExtensionIds vacío, se acepta cualquier chrome-extension:// con el token (H-5)',
+      });
+      this.log.warn('daemon.allowedExtensionIds vacío: se acepta cualquier extensión con el token (configurar el id, H-5)');
+    }
+  }
+
+  /**
+   * D-4 / CP-015.3: R6 sólo evalúa donde hay definiciones. Proxy = exacto (array `tools`);
+   * Claude Code = inventario MCP estimado del transcript; Codex/Gemini CLI = no evaluable.
+   */
+  refreshR6Health(): void {
+    let configured = 0;
+    try {
+      configured = configuredMcpServers(this.env).length;
+    } catch {
+      configured = 0;
+    }
+    this.health.set('rule-R6', {
+      status: 'ok',
+      detail: `proxy: exacto; claude-code: ≈ inventario MCP del transcript (${configured} servidores en config local); codex/gemini-cli: no evaluable (sin definiciones)`,
+    });
+  }
+
+  /** D-5: ritmo (15 min) y proyección de cada proveedor con consumo o plan. */
+  burnByProvider(now = Date.now()): ProviderBurn[] {
+    const out: ProviderBurn[] = [];
+    for (const provider of PROVIDERS) {
+      const recent = this.storage.usagePoints(provider, now - BURN_MS);
+      const tokens = recent.reduce((s, p) => s + p.tokens, 0);
+      const plan = this.pipeline.engine.planFor(provider);
+      const series = this.pipeline.usageWindowFor(provider, now);
+      const projections = series ? projectPlan(plan, (k) => series.byWindow?.[k] ?? series.points, now) : [];
+      if (!tokens && !projections.length) continue;
+      const fromPlanUsage = provider === 'anthropic' && !!this.planUsage?.fresh(now);
+      out.push({
+        provider,
+        tokensPerMin: Math.round(tokens / 15),
+        tokensPerHour: Math.round(tokens * 4),
+        projections,
+        source: projections.length ? (fromPlanUsage ? 'plan-usage' : 'local') : 'none',
+      });
+    }
+    return out;
   }
 
   /** Espera el escaneo inicial de los tailers (replay incluido). */
@@ -281,6 +357,7 @@ export class Daemon {
     this.config = next;
     saveConfig(this.paths.config, next);
     this.pipeline.engine.setConfig(this.effectiveConfig());
+    this.refreshSecurityHealth();
     if (this.health.get('config')?.status === 'error') this.health.set('config', { status: 'ok', detail: 'config válida' });
     this.reconcileAdapters();
     if (retentionChanged) this.storage.purge(next.daemon.retentionDays);

@@ -1,6 +1,7 @@
 import { clearCommand, compactCommand } from '../actions.js';
 import { cosine } from '../embed.js';
 import { priceTiersFor } from '../models.js';
+import { projectPlan } from '../projection.js';
 import { promptTotal } from '../state.js';
 import type { Rule, Source } from '../types.js';
 import { fmtTokens } from '../util.js';
@@ -8,13 +9,16 @@ import { fmtTokens } from '../util.js';
 const ALL: Source[] = ['claude-code', 'codex', 'gemini-cli', 'proxy', 'web', 'desktop'];
 const CHAT_UI: Source[] = ['web', 'desktop'];
 const MIN = 60_000;
+/** D-6: umbral de coseno de R4 elegido sobre el dataset etiquetado (precisión > 80 %). */
+export const R4_COSINE = 0.3;
 
 export const R4: Rule = {
   id: 'R4',
   phase: 2,
   sources: ALL,
   requiresExact: false,
-  defaults: { cosine: 0.3, minPrompts: 3, minContext: 20_000, minPromptTokens: 20 },
+  // D-6: cosine calibrado con packages/core/test/fixtures/r4/cases.json (ver DECISIONS «R4»).
+  defaults: { cosine: R4_COSINE, minPrompts: 3, minContext: 20_000, minPromptTokens: 20 },
   defaultCooldownMs: 30 * MIN,
   on: ['prompt', 'response'],
   evaluate({ event, prev, thresholds }) {
@@ -31,7 +35,9 @@ export const R4: Rule = {
       title: 'Tarea nueva: conviene sesión nueva',
       detail: `El prompt no se parece a lo que venían trabajando (similitud ${sim.toFixed(2)}). Arrastrar ${fmtTokens(prev.contextSize)} tokens de otra tarea cuesta y distrae al modelo.`,
       estimatedSavingTokens: prev.contextSize,
+      // CP-019.3 / D-6: traspaso + sesión nueva (+ comando de limpieza en CLI).
       actions: [
+        { kind: 'handoff', label: 'Generar traspaso' },
         { kind: 'open-session', label: 'Sesión nueva' },
         ...(clear ? [{ kind: 'copy' as const, label: `Copiar ${clear}`, payload: clear }] : []),
       ],
@@ -44,30 +50,29 @@ export const R10: Rule = {
   phase: 1,
   sources: ALL,
   requiresExact: false,
-  defaults: { rateWindowMin: 30, minPoints: 3 },
+  // D-5: ritmo de 60 min (error medido en plan-usage real: 19,6 % vs 20,8 % con 30 min; ver DECISIONS).
+  defaults: { rateWindowMin: 60, minPoints: 3 },
   defaultCooldownMs: 60 * MIN,
   on: ['response'],
+  // D-1: señal de cuenta, no de sesión: una por proveedor, fuera del cupo visible por sesión.
+  scope: 'account',
   evaluate({ plan, usageWindow, now, thresholds }) {
     if (!plan || !usageWindow || usageWindow.points.length < thresholds.minPoints!) return null;
     const pts = usageWindow.points;
-    if (plan.kind === 'subscription' && plan.windowMs && plan.windowBudgetTokens) {
-      const winStart = now - plan.windowMs;
-      const inWin = pts.filter((p) => p.ts >= winStart);
-      if (!inWin.length) return null;
-      const used = inWin.reduce((s, p) => s + p.tokens, 0);
-      const rateFrom = now - thresholds.rateWindowMin! * MIN;
-      const recent = inWin.filter((p) => p.ts >= rateFrom).reduce((s, p) => s + p.tokens, 0);
-      const ratePerMs = recent / (thresholds.rateWindowMin! * MIN);
-      if (ratePerMs <= 0) return null;
-      const remaining = plan.windowBudgetTokens - used;
-      const windowEnds = inWin[0]!.ts + plan.windowMs;
-      const exhaustAt = now + Math.max(0, remaining) / ratePerMs;
-      if (exhaustAt >= windowEnds) return null;
-      const hhmm = new Date(exhaustAt).toTimeString().slice(0, 5);
+    if (plan.kind === 'subscription') {
+      // D-15: todas las ventanas del plan (5 h + 7 días); gana la que se agota primero.
+      const proj = projectPlan(plan, (k) => usageWindow.byWindow?.[k] ?? pts, now, thresholds.rateWindowMin! * MIN);
+      const hit = proj.filter((p) => p.exhaustAt !== undefined).sort((a, b) => a.exhaustAt! - b.exhaustAt!)[0];
+      if (!hit) return null;
+      const hhmm = new Date(hit.exhaustAt!).toTimeString().slice(0, 5);
+      const multi = proj.length > 1 ? ` (ventana de ${hit.label})` : '';
+      const pctUnits = hit.budget === 100;
+      const fmt = (x: number) => (pctUnits ? `${Math.round(x)} %` : fmtTokens(x));
       return {
-        severity: remaining <= 0 || exhaustAt - now < 30 * MIN ? 'critical' : 'warn',
-        title: `A este ritmo llegás al límite a las ${hhmm}`,
-        detail: `Usaste ${fmtTokens(used)} de ${fmtTokens(plan.windowBudgetTokens)} en la ventana actual; ritmo de los últimos ${thresholds.rateWindowMin} min: ${fmtTokens(ratePerMs * 3_600_000)}/h. La ventana se renueva a las ${new Date(windowEnds).toTimeString().slice(0, 5)}.`,
+        // CP-018.2: critical con la hora proyectada.
+        severity: 'critical',
+        title: `A este ritmo llegás al límite a las ${hhmm}${multi}`,
+        detail: `Usaste ${fmt(hit.used)} de ${fmt(hit.budget)} en la ventana actual; ritmo de los últimos ${thresholds.rateWindowMin} min: ${fmt(hit.perHour)}/h. La ventana se renueva a las ${new Date(hit.windowEndsAt).toTimeString().slice(0, 5)}.`,
         actions: [{ kind: 'show-detail', label: 'Ver proyección' }],
       };
     }
@@ -119,8 +124,10 @@ export const W2: Rule = {
   defaults: { repeats: 2 },
   defaultCooldownMs: 60 * MIN,
   on: ['prompt', 'response'],
-  evaluate({ event, state, thresholds }) {
-    const hit = (event.attachments ?? []).find((a) => (state.attachmentCounts[a.hash] ?? 0) >= thresholds.repeats!);
+  evaluate({ event, state, thresholds, siteAttachmentCounts }) {
+    // D-11: cuenta la conversación actual y, si el daemon la informa, el sitio entero en 7 días.
+    const count = (h: string) => Math.max(state.attachmentCounts[h] ?? 0, siteAttachmentCounts?.[h] ?? 0);
+    const hit = (event.attachments ?? []).find((a) => count(a.hash) >= thresholds.repeats!);
     if (!hit) return null;
     const where = event.client.includes('gemini') ? 'un Gem' : event.client.includes('chatgpt') ? 'un Project o GPT' : 'un Project';
     return {

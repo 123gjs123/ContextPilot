@@ -166,6 +166,12 @@ export async function waitFor<T>(fn: () => T | Promise<T>, timeoutMs = 3000, ste
   }
 }
 
+/** D-17: hijos vivos; se matan si el worker de vitest termina (test que falló antes de stop()). */
+const children = new Set<import('node:child_process').ChildProcess>();
+process.once('exit', () => {
+  for (const c of children) c.kill();
+});
+
 /**
  * Daemon real en un proceso aparte (node --import tsx main.ts): para medir latencias sin que el
  * upstream simulado y el cliente compitan por el mismo event loop.
@@ -187,6 +193,9 @@ export async function spawnDaemon(env: Record<string, string>): Promise<{ base: 
     },
     stdio: 'ignore',
   });
+  children.add(child);
+  const exited = new Promise<void>((r) => child.once('exit', () => r()));
+  void exited.then(() => children.delete(child));
   const base = `http://127.0.0.1:${port}`;
   await waitFor(async () => {
     try {
@@ -199,8 +208,9 @@ export async function spawnDaemon(env: Record<string, string>): Promise<{ base: 
     base,
     home,
     async stop() {
-      child.kill();
-      await new Promise((r) => child.once('exit', r));
+      // D-17: idempotente y sin colgarse si el hijo ya salió.
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await exited;
       rmrf(home);
     },
   };

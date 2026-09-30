@@ -1,5 +1,5 @@
 import { fmtPct } from '@contextpilot/core';
-import type { AppSnapshot, SessionRow } from '../shared/types.js';
+import type { AccountRow, AppSnapshot, SessionRow, SuggestionRow } from '../shared/types.js';
 import { clear, cp, h, toast } from './dom.js';
 
 // Overlay del tray (CP-046): sesiones activas, medidor (≈ si estimado) y sugerencia vigente con acciones.
@@ -20,6 +20,31 @@ async function act(fn: () => Promise<{ ok: boolean; message: string }>): Promise
   }
 }
 
+function suggestionEl(s: SuggestionRow): HTMLElement {
+  const btns = h('div', { class: 'btns' });
+  for (const a of s.actions) {
+    btns.append(h('button', { class: a.index === 0 ? 'primary' : '', onclick: () => act(() => cp().runAction(s.id, a.index)) }, a.label));
+  }
+  btns.append(
+    h('button', { onclick: () => act(() => cp().feedback(s.id, 'accepted')), title: 'Marcar como aceptada' }, 'Aceptar'),
+    h('button', { onclick: () => act(() => cp().feedback(s.id, 'dismissed')) }, 'Ignorar'),
+    h('button', { onclick: () => act(() => cp().feedback(s.id, 'snoozed')) }, 'Posponer 15 min'),
+  );
+  return h(
+    'div',
+    { class: `sug ${s.severity}${focusId === s.id ? ' focus' : ''}`, 'data-id': s.id },
+    h('div', { class: 'title' }, `${s.severity === 'critical' ? '⛔ ' : s.severity === 'warn' ? '⚠ ' : 'ℹ '}${s.title}`),
+    h('div', { class: 'detail' }, s.detail, s.savingText ? ` · ${s.savingText}` : ''),
+    btns,
+  );
+}
+
+/** D-1: banner de cuenta (R10), arriba de las sesiones. */
+function accountEl(a: AccountRow): HTMLElement {
+  const names: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', google: 'Gemini' };
+  return h('div', { class: 'account', 'data-provider': a.provider }, h('div', { class: 'muted' }, `Cuenta ${names[a.provider] ?? a.provider}`), suggestionEl(a.suggestion));
+}
+
 function sessionEl(r: SessionRow): HTMLElement {
   const pct = r.contextPct === null ? 0 : Math.min(1, r.contextPct);
   const nums = r.noData ? 'sin datos' : `${r.meterText} · ${r.cacheText}`;
@@ -30,27 +55,7 @@ function sessionEl(r: SessionRow): HTMLElement {
     h('div', { class: `meter ${r.meterLevel}`, role: 'meter', 'aria-valuenow': Math.round(pct * 100), 'aria-label': 'Ocupación de contexto' },
       h('i', { style: `width:${(pct * 100).toFixed(1)}%` })),
   );
-  const s = r.suggestion;
-  if (s) {
-    const btns = h('div', { class: 'btns' });
-    for (const a of s.actions) {
-      btns.append(h('button', { class: a.index === 0 ? 'primary' : '', onclick: () => act(() => cp().runAction(s.id, a.index)) }, a.label));
-    }
-    btns.append(
-      h('button', { onclick: () => act(() => cp().feedback(s.id, 'accepted')), title: 'Marcar como aceptada' }, 'Aceptar'),
-      h('button', { onclick: () => act(() => cp().feedback(s.id, 'dismissed')) }, 'Ignorar'),
-      h('button', { onclick: () => act(() => cp().feedback(s.id, 'snoozed')) }, 'Posponer 15 min'),
-    );
-    el.append(
-      h(
-        'div',
-        { class: `sug ${s.severity}${focusId === s.id ? ' focus' : ''}`, 'data-id': s.id },
-        h('div', { class: 'title' }, `${s.severity === 'critical' ? '⛔ ' : s.severity === 'warn' ? '⚠ ' : 'ℹ '}${s.title}`),
-        h('div', { class: 'detail' }, s.detail, s.savingText ? ` · ${s.savingText}` : ''),
-        btns,
-      ),
-    );
-  }
+  if (r.suggestion) el.append(suggestionEl(r.suggestion));
   return el;
 }
 
@@ -72,6 +77,7 @@ export function render(snap: AppSnapshot): void {
         `Plan Claude: ventana 5 h ${fmtPct(p.fiveHourPct)} · 7 días ${fmtPct(p.sevenDayPct)}${p.stale ? ' (desactualizado)' : ''}`),
     );
   }
+  for (const a of snap.account ?? []) body.append(accountEl(a));
   if (snap.connection === 'connected' && !snap.sessions.length) body.append(h('div', { class: 'empty' }, 'Sin sesiones activas'));
   for (const r of snap.sessions) body.append(sessionEl(r));
   const foot = document.getElementById('desktopStatus')!;
