@@ -2,7 +2,7 @@ import { clearCommand, compactCommand, isCli, modelCommand } from '../actions.js
 import { isTopTier, smallerModelFor } from '../models.js';
 import { promptTotal } from '../state.js';
 import type { Rule, Source } from '../types.js';
-import { fmtPct, fmtTokens } from '../util.js';
+import { fmtPct, fmtTokens, prettyToolName } from '../util.js';
 
 const CLI: Source[] = ['claude-code', 'codex', 'gemini-cli'];
 const CLI_API: Source[] = [...CLI, 'proxy'];
@@ -136,8 +136,8 @@ export const R5: Rule = {
     const ex = toolExample(top.name);
     return {
       severity: 'info',
-      title: `${top.name} devolvió ${fmtTokens(top.resultTokens)} tokens`,
-      detail: `Esa salida queda en el contexto para siempre. Ejemplo para ${top.name}: ${ex}`,
+      title: `${prettyToolName(top.name)} devolvió ${fmtTokens(top.resultTokens)} tokens`,
+      detail: `Esa salida queda en el contexto para siempre. Ejemplo para ${prettyToolName(top.name)}: ${ex}`,
       estimatedSavingTokens: Math.round(top.resultTokens * 0.8),
       actions: [
         // CP-010.4 / D-14: ejemplo según la herramienta.
@@ -173,7 +173,7 @@ export const R6: Rule = {
     return {
       severity: 'info',
       title: `${unused.length} herramientas/MCP sin uso cuestan ${est}${fmtTokens(cost)} tokens por turno`,
-      detail: `Sin uso en ${thresholds.idleTurns} turnos. Candidatas a desactivar: ${names.map((t) => `${t.name} (${t.estimated ? '≈' : ''}${fmtTokens(t.definitionTokens)})`).join(', ')}.${est ? ' Costo estimado: la fuente no expone las definiciones completas.' : ''}`,
+      detail: `Sin uso en ${thresholds.idleTurns} turnos. Candidatas a desactivar: ${names.map((t) => `${prettyToolName(t.name)} (${t.estimated ? '≈' : ''}${fmtTokens(t.definitionTokens)})`).join(', ')}.${est ? ' Costo estimado: la fuente no expone las definiciones completas.' : ''}`,
       estimatedSavingTokens: cost,
       actions: [{ kind: 'show-detail', label: 'Ver lista' }],
     };
@@ -226,8 +226,8 @@ export const R8: Rule = {
     const times = last.map((t) => (t.ts ? t.ts.slice(11, 19) : '?')).join(', ');
     return {
       severity: 'critical',
-      title: `Agente en loop: ${first.name} falló ${n} veces igual`,
-      detail: `Comando: ${first.name} (args #${first.argsHash.slice(0, 8) || '—'}), fallos a las ${times} UTC. El agente repite el mismo comando con los mismos argumentos y sigue fallando. Intervení con más contexto o cortá el turno; cada reintento reenvía todo el contexto.`,
+      title: `Agente en loop: ${prettyToolName(first.name)} falló ${n} veces igual`,
+      detail: `Comando: ${prettyToolName(first.name)} (args #${first.argsHash.slice(0, 8) || '—'}), fallos a las ${times} UTC. El agente repite el mismo comando con los mismos argumentos y sigue fallando. Intervení con más contexto o cortá el turno; cada reintento reenvía todo el contexto.`,
       estimatedSavingTokens: state.contextSize,
       actions: [{ kind: 'show-detail', label: 'Ver la sesión' }],
     };

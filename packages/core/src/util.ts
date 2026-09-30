@@ -42,3 +42,14 @@ export function fmtTokens(n: number): string {
 export function fmtPct(r: number): string {
   return `${Math.round(r * 100)}%`;
 }
+
+/**
+ * Nombre legible de una herramienta para textos de UI: `mcp__claude_ai_Atlassian_Rovo__searchJiraIssues`
+ * → `Atlassian Rovo › searchJiraIssues`. Las herramientas nativas quedan igual.
+ */
+export function prettyToolName(name: string): string {
+  const m = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (!m) return name;
+  const server = m[1]!.replace(/^claude_ai_/, '').replace(/_/g, ' ').trim();
+  return `${server} › ${m[2]}`;
+}
