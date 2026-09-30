@@ -18,6 +18,8 @@ import { isAllowedApi, loadSettings, resolveHome, resolvePort } from './settings
 // La lógica vive en src/shared (pura, testeada); acá sólo se cablea Electron.
 
 const SMOKE = process.argv.includes('--smoke');
+/** --dashboard: abre la ventana del monitor al iniciar (además del tray). */
+const OPEN_DASHBOARD = process.argv.includes('--dashboard');
 const OUT_DIR = __dirname;
 const home = resolveHome();
 const port = resolvePort();
@@ -293,7 +295,7 @@ async function main(): Promise<void> {
     return;
   }
   app.setAppUserModelId('ContextPilot');
-  app.on('second-instance', () => showOverlay());
+  app.on('second-instance', (_e, argv) => (argv.includes('--dashboard') ? openDashboard() : showOverlay()));
   // App de bandeja: cerrar ventanas no termina el proceso.
   app.on('window-all-closed', () => {});
   await app.whenReady();
@@ -316,6 +318,7 @@ async function main(): Promise<void> {
     cdpAdapter!.start();
   }
 
+  if (OPEN_DASHBOARD && !SMOKE) openDashboard();
   if (SMOKE) await smoke();
 }
 
