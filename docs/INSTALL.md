@@ -1,0 +1,144 @@
+# Instalación y uso del daemon
+
+Windows 11, Node 24. Todo corre local en `127.0.0.1`; no hay servicios externos.
+
+## 1. Instalar
+
+```powershell
+cd C:\ruta\a\contextpilot
+$env:NODE_OPTIONS = "--use-system-ca"   # sólo si hay proxy TLS corporativo
+npm ci
+Remove-Item Env:NODE_OPTIONS
+npm test                                 # opcional: suite completa (vitest)
+```
+
+## 2. Arrancar el daemon
+
+```powershell
+npm start -w @contextpilot/daemon            # = tsx apps/daemon/src/main.ts
+# detrás de un proxy corporativo (CAs del almacén de Windows → NODE_EXTRA_CA_CERTS):
+npm run start:ca -w @contextpilot/daemon     # = node scripts/with-ca.mjs -- node --import tsx src/main.ts
+```
+
+Imprime `ContextPilot daemon 0.1.0 en http://127.0.0.1:47800`. Se detiene con Ctrl+C.
+
+| Variable | Default | Uso |
+| --- | --- | --- |
+| `CONTEXTPILOT_HOME` | `%LOCALAPPDATA%\ContextPilot` | `token`, `config.json`, `cp.db`, `ca.pem`, `logs\daemon.log` |
+| `CONTEXTPILOT_PORT` | `47800` | Puerto (siempre en 127.0.0.1) |
+| `CLAUDE_CONFIG_DIR` / `CONTEXTPILOT_CLAUDE_PROJECTS` | `~\.claude` / `~\.claude\projects` | Transcripts de Claude Code |
+| `CODEX_HOME` / `CONTEXTPILOT_CODEX_SESSIONS` | `~\.codex` / `~\.codex\sessions` | Rollouts de Codex |
+| `CONTEXTPILOT_UPSTREAM_ANTHROPIC` / `_OPENAI` / `_GOOGLE` | APIs oficiales | Upstream del proxy (tests) |
+| `CONTEXTPILOT_CLAUDE_BIN` | `claude` en PATH o binario de la extensión de VS Code | CLI para el traspaso; `none` lo desactiva |
+| `CONTEXTPILOT_PLAN_USAGE_FILE` | `plan-usage-history.json` de Claude Desktop | Uso del plan para R10 |
+| `CONTEXTPILOT_LOG_STDERR=1` | — | Log también a stderr |
+
+Estado: `curl http://127.0.0.1:47800/health` (sin token). `env.detail` muestra `extraCa=true` cuando corre bajo `with-ca`.
+
+### `with-ca` (proxy corporativo)
+
+```powershell
+node scripts/with-ca.mjs -- node -e "fetch('https://registry.npmjs.org').then(r=>console.log(r.status))"   # → 200
+node scripts/with-ca.mjs --refresh     # re-exporta %LOCALAPPDATA%\ContextPilot\ca.pem e imprime la ruta
+```
+
+Exporta las CAs raíz e intermedias (LocalMachine/CurrentUser) a `ca.pem` (se renueva cada 24 h) y fija
+`NODE_EXTRA_CA_CERTS` sólo para el proceso hijo. No instala nada en el sistema.
+
+## 3. Token y emparejamiento de la extensión
+
+El primer arranque genera `%LOCALAPPDATA%\ContextPilot\token` (32 bytes hex). Todas las rutas salvo
+`GET /health`, `/proxy/*` y `POST /otlp/v1/logs` exigen el header `X-CP-Token`.
+
+Extensión (una vez): abrir la página de opciones de ContextPilot en Chrome/Edge y pegar el token:
+
+```powershell
+Get-Content $env:LOCALAPPDATA\ContextPilot\token | Set-Clipboard
+```
+
+El daemon acepta pedidos con `Origin: chrome-extension://…` (o sin Origin); cualquier otro origen → 403.
+
+## 4. Hooks de Claude Code
+
+```powershell
+node scripts/install-hooks.mjs              # SessionStart, UserPromptSubmit, PreCompact, Stop
+node scripts/install-hooks.mjs --dry-run    # muestra el settings.json resultante sin escribir
+node scripts/install-hooks.mjs --uninstall  # quita sólo las entradas propias (hooks y statusLine)
+```
+
+- Modifica `~\.claude\settings.json` (o `$env:CLAUDE_CONFIG_DIR\settings.json`, o `--settings <ruta>`),
+  preserva hooks ajenos, guarda `settings.json.cp-bak` antes del primer cambio y es idempotente.
+- Cada hook ejecuta `node "<repo>/scripts/hook.mjs" <Hook>`: reenvía el JSON de stdin a
+  `POST /ingest/hooks/<Hook>` con timeout de 1 s y **siempre** sale 0 sin escribir nada (si el daemon
+  está caído, Claude Code no se entera).
+- Los hooks sólo registran sesión ↔ transcript y aceleran la lectura; la fuente de datos es el
+  transcript (`~\.claude\projects\**\*.jsonl`), así que funcionan también sin hooks.
+
+## 5. Statusline de Claude Code
+
+Automático (no pisa una statusline ajena sin `--force`):
+
+```powershell
+node scripts/install-hooks.mjs --statusline
+```
+
+Manual, en `~\.claude\settings.json`:
+
+```json
+{
+  "statusLine": { "type": "command", "command": "node \"C:/ruta/a/contextpilot/scripts/statusline.mjs\"", "padding": 0 }
+}
+```
+
+Muestra `ctx 68% · cache 91% · ⚠ /compact` (`≈` delante de cifras estimadas). Si el daemon no
+responde en 300 ms: `ContextPilot: sin datos`.
+
+## 6. Traspaso desde la terminal
+
+```powershell
+node scripts/handoff.mjs --latest --copy        # sesión CLI activa más reciente → portapapeles
+node scripts/handoff.mjs <sessionId> --print    # imprime sin tocar el portapapeles
+```
+
+El daemon lee el transcript en ese momento, redacta secretos y resume con `claude -p --model haiku`
+(suscripción del usuario, timeout 60 s; corre en `%LOCALAPPDATA%\ContextPilot\handoff`, carpeta que
+el tailer ignora). Sin `claude` o si falla: resumen extractivo local (`method: "extractive"`). Nada del
+contenido se persiste.
+
+## 7. Codex CLI y Gemini CLI
+
+- Codex: automático sobre `~\.codex\sessions\YYYY\MM\DD\rollout-*.jsonl`. Sin carpeta → health `no-data`.
+- Gemini CLI: activar la telemetría a archivo en `~\.gemini\settings.json`:
+
+  ```json
+  { "telemetry": { "enabled": true, "target": "local", "outfile": "C:/Users/<usuario>/.gemini/telemetry.log" } }
+  ```
+
+  Otra ruta: `PUT /config` con `{ "daemon": { "geminiOutfile": "…" } }`. Alternativa OTLP/HTTP JSON:
+  `"otlpEndpoint": "http://127.0.0.1:47800/otlp"`, `"otlpProtocol": "http"` (el exportador agrega
+  `/v1/logs`; sin verificar con un Gemini CLI real porque no está instalado en esta máquina). gRPC no soportado.
+
+## 8. Proxy base-URL (API/SDK, opt-in)
+
+| SDK | Variable |
+| --- | --- |
+| Anthropic / Claude Code | `ANTHROPIC_BASE_URL=http://127.0.0.1:47800/proxy/anthropic` |
+| OpenAI / Codex | `OPENAI_BASE_URL=http://127.0.0.1:47800/proxy/openai/v1` |
+| google-genai | `base_url="http://127.0.0.1:47800/proxy/google"` (`http_options`) |
+
+Header opcional `X-CP-Session: <id>` para agrupar pedidos en una sesión (no viaja al upstream). La
+salida respeta `HTTPS_PROXY`/`NO_PROXY` con las CAs de `with-ca`. Las API keys pasan tal cual al
+upstream y nunca se loguean ni persisten.
+
+**Limitación (RNF-08):** si el daemon está caído, la base URL apunta a nada: quitar la variable para
+volver a la API directa.
+
+## 9. Verificaciones
+
+```powershell
+node scripts/verify/idle.mjs --seconds 60     # RNF-07: RSS máx y CPU promedio de un daemon en reposo
+node scripts/verify/idle.mjs --minutes 10     # criterio CP-028
+node scripts/verify/idle.mjs --pid <pid>      # medir un daemon ya corriendo
+npx vitest run apps/daemon                    # tests del daemon
+$env:CP_TEST_CLIPBOARD=1; npx vitest run apps/daemon/test/handoff.test.ts   # incluye Set-Clipboard (restaura el portapapeles)
+```

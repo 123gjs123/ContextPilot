@@ -12,6 +12,7 @@ import type {
   Suggestion,
   TurnEvent,
 } from './types.js';
+import { estimateSaving } from './savings.js';
 import { ulid } from './util.js';
 
 export const ALL_RULES: Rule[] = [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, W1, W2, W3, W4, G1, G2];
@@ -19,6 +20,8 @@ export const ALL_RULES: Rule[] = [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, W1, W
 const SEVERITY_RANK: Record<Severity, number> = { info: 1, warn: 2, critical: 3 };
 const SUGGESTION_TTL_MS = 10 * 60_000;
 const SNOOZE_MS = 15 * 60_000;
+/** DECISIONS «subagentes»: las llamadas de subagentes sólo alimentan R5/R8 (y R10, ritmo). */
+const SIDECHAIN_RULES = new Set(['R5', 'R8', 'R10']);
 
 export function defaultConfig(rules: Rule[] = ALL_RULES): Config {
   return {
@@ -47,6 +50,7 @@ export function mergeConfig(base: Config, patch: Partial<Config> | undefined): C
   if (patch.plans) out.plans = patch.plans;
   if (patch.storeContent) out.storeContent = { ...out.storeContent, ...patch.storeContent };
   if (patch.maxVisiblePerSession) out.maxVisiblePerSession = patch.maxVisiblePerSession;
+  if (patch.contextWindows) out.contextWindows = { ...(out.contextWindows ?? {}), ...patch.contextWindows };
   return out;
 }
 
@@ -131,6 +135,7 @@ export class RuleEngine {
       if (settings && !settings.enabled) continue;
       if (!rule.on.includes(phase)) continue;
       if (!rule.sources.includes(event.source)) continue;
+      if (event.sidechain && !SIDECHAIN_RULES.has(rule.id)) continue;
       if (rule.requiresExact && event.tokens.estimated && phase === 'response') continue;
       if (rule.requiresExact && state.estimated && phase === 'prompt') continue;
       const res = rule.evaluate({
@@ -157,7 +162,8 @@ export class RuleEngine {
         quiet: eff.quiet || undefined,
         title: res.title,
         detail: res.detail,
-        estimatedSavingTokens: res.estimatedSavingTokens,
+        // CP-021: fórmula por regla (savings.ts); si no aplica, lo que informe la regla.
+        estimatedSavingTokens: estimateSaving(rule.id, state, event) || res.estimatedSavingTokens,
         actions: res.actions,
         createdAt: new Date(now).toISOString(),
         expiresAt: new Date(now + SUGGESTION_TTL_MS).toISOString(),

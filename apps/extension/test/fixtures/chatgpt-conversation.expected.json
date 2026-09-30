@@ -1,0 +1,7 @@
+{
+  "text": "Un índice B-tree guarda las claves ordenadas en nodos balanceados, así las búsquedas cuestan O(log n) ✅. Fin.",
+  "model": "gpt-5",
+  "done": true,
+  "messageId": "e5f6a7b8-0000-4000-9000-555555555555",
+  "conversationId": "68db1c2e-0000-8000-a000-333333333333"
+}

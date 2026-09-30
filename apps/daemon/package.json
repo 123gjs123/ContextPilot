@@ -5,7 +5,9 @@
   "type": "module",
   "main": "src/main.ts",
   "scripts": {
-    "start": "tsx src/main.ts"
+    "start": "tsx src/main.ts",
+    "start:ca": "node ../../scripts/with-ca.mjs -- node --import tsx src/main.ts",
+    "verify:idle": "node ../../scripts/verify/idle.mjs"
   },
   "dependencies": {
     "@contextpilot/core": "*",

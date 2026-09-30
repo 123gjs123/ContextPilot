@@ -55,7 +55,20 @@ export interface TurnEvent {
   expensiveMode?: string;
   /** Extensión: bloques grandes enviados en el prompt (hash + tokens) para R9. */
   blocks?: { hash: string; tokens: number }[];
+  /**
+   * Extensión (DECISIONS «subagentes»): llamada de un subagente / línea isSidechain atribuida a la
+   * sesión padre. Suma a acumulados y toolCalls (R5/R8) pero no toca contextSize ni cacheRatios.
+   */
+  sidechain?: boolean;
+  /** Extensión (DECISIONS «ventanas»): de dónde sale contextWindow. */
+  windowSource?: WindowSource;
 }
+
+/**
+ * 'table' = tabla de modelos; 'default' = modelo desconocido; 'observed' = informado por la fuente
+ * (p. ej. model_context_window de Codex) o inferido porque el contexto observado superó la nominal.
+ */
+export type WindowSource = 'table' | 'default' | 'observed';
 
 export type ActionKind = 'copy' | 'handoff' | 'open-session' | 'show-detail';
 
@@ -120,6 +133,8 @@ export interface SessionState {
   lastModel: string;
   lastPhase: 'prompt' | 'response';
   status: 'active' | 'idle' | 'closed';
+  /** Extensión: origen de contextWindow (DECISIONS «ventanas»). */
+  windowSource?: WindowSource;
 }
 
 export interface RuleThresholds {
@@ -152,6 +167,8 @@ export interface Config {
   plans: PlanProfile[];
   storeContent: Partial<Record<Source, boolean>>;
   maxVisiblePerSession: number;
+  /** Extensión (DECISIONS «ventanas»): ventana declarada por id exacto de modelo. */
+  contextWindows?: Record<string, number>;
 }
 
 export interface RuleContext {

@@ -52,8 +52,10 @@ export function newSession(e: TurnEvent): SessionState {
 }
 
 export function applyEvent(prev: SessionState | undefined, e: TurnEvent): SessionState {
+  if (e.sidechain) return applySidechain(prev, e);
   const s: SessionState = structuredClone(prev ?? newSession(e));
   s.lastIdleMs = e.idleSincePrevMs;
+  if (e.windowSource) s.windowSource = e.windowSource;
   s.status = 'active';
   if (e.model) {
     s.model = e.model;
@@ -124,6 +126,30 @@ export function applyEvent(prev: SessionState | undefined, e: TurnEvent): Sessio
   return s;
 }
 
+/**
+ * DECISIONS «subagentes»: una llamada de subagente suma a acumulados y a la historia de
+ * herramientas (R5/R8), pero no toca contextSize, ventana, caché, modelo, turnos ni pausa del
+ * hilo principal. Si la sesión padre aún no existe, se crea con contexto 0.
+ */
+function applySidechain(prev: SessionState | undefined, e: TurnEvent): SessionState {
+  const s: SessionState = structuredClone(prev ?? { ...newSession(e), contextWindow: 0 });
+  s.status = 'active';
+  if (!prev || Date.parse(e.ts) > Date.parse(s.lastTurnAt)) s.lastTurnAt = e.ts;
+  s.totals.input += e.tokens.input;
+  s.totals.output += e.tokens.output;
+  s.totals.cacheRead += e.tokens.cacheRead ?? 0;
+  s.totals.cacheWrite += e.tokens.cacheWrite ?? 0;
+  s.totals.reasoning += e.tokens.reasoning ?? 0;
+  for (const tc of e.toolCalls ?? []) {
+    s.recentToolCalls.push(tc);
+    s.toolLastUsedTurn[tc.name] = s.turns;
+  }
+  if (s.recentToolCalls.length > MAX_RECENT_TOOL_CALLS) {
+    s.recentToolCalls.splice(0, s.recentToolCalls.length - MAX_RECENT_TOOL_CALLS);
+  }
+  return s;
+}
+
 /** Vista compacta para UIs y statusline. */
 export interface SessionView {
   sessionId: string;
@@ -139,6 +165,8 @@ export interface SessionView {
   estimated: boolean;
   lastTurnAt: string;
   status: SessionState['status'];
+  /** Extensión: origen de contextWindow. */
+  windowSource?: SessionState['windowSource'];
 }
 
 export function toView(s: SessionState): SessionView {
@@ -157,5 +185,6 @@ export function toView(s: SessionState): SessionView {
     estimated: s.estimated,
     lastTurnAt: s.lastTurnAt,
     status: s.status,
+    windowSource: s.windowSource,
   };
 }

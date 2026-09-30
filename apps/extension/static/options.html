@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ContextPilot · Opciones</title>
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body>
+  <h1>ContextPilot · Opciones</h1>
+  <div class="card">
+    <p class="muted">Pegá el token local del daemon. Lo encontrás en <code>%LOCALAPPDATA%\ContextPilot\token</code>.</p>
+    <label for="token">Token</label>
+    <div class="row"><input class="grow" id="token" type="password" autocomplete="off" spellcheck="false" /><button id="show" type="button">Ver</button></div>
+    <p></p>
+    <label for="url">URL del daemon</label>
+    <input id="url" type="text" spellcheck="false" placeholder="http://127.0.0.1:47800" />
+    <p class="row"><button id="save" class="primary" type="button">Guardar</button><button id="test" type="button">Probar conexión</button></p>
+    <p id="status" class="muted" role="status" aria-live="polite"></p>
+  </div>
+  <p class="muted">La extensión sólo lee tus conversaciones para estimar tokens; nunca envía mensajes ni modifica pedidos. Al daemon viajan métricas, hashes y embeddings (sin texto) salvo el traspaso, que se procesa en memoria.</p>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_fake01","object":"response","created_at":1759140000,"status":"in_progress","model":"gpt-5-2025-08-07","output":[],"usage":null}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_fake01","object":"response","status":"in_progress","model":"gpt-5-2025-08-07","output":[],"usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":1,"item":{"id":"msg_fake","type":"message","status":"in_progress","content":[],"role":"assistant"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_fake","output_index":1,"content_index":0,"delta":"Listo:","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_fake","output_index":1,"content_index":0,"delta":" 42.","logprobs":[]}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":5,"item_id":"msg_fake","output_index":1,"content_index":0,"text":"Listo: 42.","logprobs":[]}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":6,"response":{"id":"resp_fake01","object":"response","created_at":1759140000,"status":"completed","model":"gpt-5-2025-08-07","output":[{"id":"rs_fake","type":"reasoning","summary":[]},{"id":"msg_fake","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"text":"Listo: 42."}],"role":"assistant"}],"usage":{"input_tokens":5400,"input_tokens_details":{"cached_tokens":4096},"output_tokens":350,"output_tokens_details":{"reasoning_tokens":320},"total_tokens":5750}}}
+

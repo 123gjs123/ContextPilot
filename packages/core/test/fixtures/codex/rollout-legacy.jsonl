@@ -1,0 +1,8 @@
+{"id":"0b1c2d3e-0000-4000-8000-000000000001","timestamp":"2025-05-02T09:00:00.000Z","instructions":null,"git":{"branch":"main"}}
+{"record_type":"state"}
+{"type":"message","role":"user","content":[{"type":"input_text","text":"<user_instructions>\nSé breve.\n</user_instructions>"}]}
+{"type":"message","role":"user","content":[{"type":"input_text","text":"Listá los archivos"}]}
+{"record_type":"state"}
+{"type":"function_call","name":"shell","arguments":"{\"command\":[\"ls\"]}","call_id":"call_L1"}
+{"type":"function_call_output","call_id":"call_L1","output":"{\"output\":\"a.txt\\nb.txt\\n\",\"metadata\":{\"exit_code\":0,\"duration_seconds\":0.01}}"}
+{"type":"message","role":"assistant","content":[{"type":"output_text","text":"a.txt y b.txt"}]}

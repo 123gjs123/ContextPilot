@@ -1,0 +1,123 @@
+[
+  {
+    "source": "gemini-cli",
+    "provider": "google",
+    "client": "gemini-cli",
+    "sessionId": "b8a0f1e2-7c3d-4e5f-9a1b-2c3d4e5f6a7b",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:05.000Z",
+    "model": "gemini-2.5-pro",
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "estimated": false
+    },
+    "contextSize": 0,
+    "contextWindow": 1048576,
+    "windowSource": "table",
+    "idleSincePrevMs": 0,
+    "promptHash": "0ad39df93dfc88",
+    "promptTokens": 16,
+    "phase": "prompt"
+  },
+  {
+    "source": "gemini-cli",
+    "provider": "google",
+    "client": "gemini-cli",
+    "sessionId": "b8a0f1e2-7c3d-4e5f-9a1b-2c3d4e5f6a7b",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:09.400Z",
+    "model": "gemini-2.5-pro",
+    "tokens": {
+      "input": 14820,
+      "output": 96,
+      "cacheRead": 0,
+      "reasoning": 410,
+      "estimated": false
+    },
+    "contextSize": 14916,
+    "contextWindow": 1048576,
+    "windowSource": "table",
+    "idleSincePrevMs": 0,
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "gemini-cli",
+    "provider": "google",
+    "client": "gemini-cli",
+    "sessionId": "b8a0f1e2-7c3d-4e5f-9a1b-2c3d4e5f6a7b",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:15.200Z",
+    "model": "gemini-2.5-pro",
+    "tokens": {
+      "input": 1264,
+      "output": 180,
+      "cacheRead": 14336,
+      "reasoning": 120,
+      "estimated": false
+    },
+    "contextSize": 15825,
+    "contextWindow": 1048576,
+    "windowSource": "table",
+    "idleSincePrevMs": 5800,
+    "toolCalls": [
+      {
+        "name": "read_file",
+        "argsHash": "15fa93df15a928",
+        "failed": false,
+        "resultTokens": 0
+      },
+      {
+        "name": "run_shell_command",
+        "argsHash": "0d7dd6eed19132",
+        "failed": true,
+        "resultTokens": 0
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "gemini-cli",
+    "provider": "google",
+    "client": "gemini-cli",
+    "sessionId": "b8a0f1e2-7c3d-4e5f-9a1b-2c3d4e5f6a7b",
+    "turn": 2,
+    "ts": "2026-09-29T10:20:00.000Z",
+    "model": "gemini-2.5-pro",
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "estimated": false
+    },
+    "contextSize": 0,
+    "contextWindow": 1048576,
+    "windowSource": "table",
+    "idleSincePrevMs": 1184800,
+    "promptHash": "0a476ed83a7f23",
+    "promptTokens": 5,
+    "phase": "prompt"
+  },
+  {
+    "source": "gemini-cli",
+    "provider": "google",
+    "client": "gemini-cli",
+    "sessionId": "b8a0f1e2-7c3d-4e5f-9a1b-2c3d4e5f6a7b",
+    "turn": 2,
+    "ts": "2026-09-29T10:20:04.000Z",
+    "model": "gemini-2.5-pro",
+    "tokens": {
+      "input": 16100,
+      "output": 350,
+      "cacheRead": 0,
+      "estimated": false
+    },
+    "contextSize": 16450,
+    "contextWindow": 1048576,
+    "windowSource": "table",
+    "idleSincePrevMs": 1184800,
+    "promptHash": "",
+    "phase": "response"
+  }
+]

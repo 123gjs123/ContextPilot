@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- Fixture SINTÉTICO de claude.ai (conversación con 1 turno). MANUAL: re-grabar desde una sesión real. -->
+<html lang="es">
+<head><meta charset="utf-8"><title>Claude</title></head>
+<body>
+  <div id="root">
+    <div class="flex min-h-screen">
+      <main class="flex-1">
+        <div class="flex-1 flex flex-col" data-testid="conversation-turns">
+          <div data-test-render-count="1"><div class="font-user-message" data-testid="user-message"><p class="whitespace-pre-wrap">Necesito ayuda con índices en Postgres. Mi clave es sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</p></div></div>
+          <div data-test-render-count="1"><div data-is-streaming="false"><div class="font-claude-response"><p>Claro. Un índice B-tree acelera búsquedas por igualdad y rango.</p></div></div>
+            <div role="group"><button data-testid="action-bar-copy" aria-label="Copy">Copiar</button><button data-testid="action-bar-retry" aria-label="Retry">Reintentar</button></div>
+          </div>
+        </div>
+        <div class="sticky bottom-0">
+          <fieldset class="flex w-full min-w-0 flex-col">
+            <div class="relative">
+              <div contenteditable="true" translate="no" class="ProseMirror" role="textbox" aria-label="Escribí tu prompt para Claude"><p data-placeholder="¿Cómo puedo ayudarte hoy?" class="is-empty is-editor-empty"><br class="ProseMirror-trailingBreak"></p></div>
+            </div>
+            <div class="flex gap-2"><button data-testid="model-selector-dropdown" type="button"><div class="whitespace-nowrap">Sonnet 4.5</div></button><button aria-label="Send message" type="button">↑</button></div>
+          </fieldset>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

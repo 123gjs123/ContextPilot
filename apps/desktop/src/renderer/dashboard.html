@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>ContextPilot · Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="dash">
+  <nav class="tabs" aria-label="Secciones">
+    <button data-tab="sessions" class="active">Sesiones</button>
+    <button data-tab="stats">Estadísticas</button>
+    <button data-tab="settings">Configuración</button>
+    <button data-tab="team">Equipo</button>
+    <span class="spacer"></span>
+    <span id="conn" class="conn"></span>
+  </nav>
+  <main id="main"></main>
+  <script src="dashboard.js"></script>
+</body>
+</html>

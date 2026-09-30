@@ -1,0 +1,12 @@
+event: completion
+data: {"type":"completion","completion":"Hola","stop_reason":null,"model":"claude-2.1","stop":null,"log_id":"fakelog01","messageLimit":{"type":"within_limit"}}
+
+event: completion
+data: {"type":"completion","completion":", ¿qué","stop_reason":null,"model":"claude-2.1","stop":null,"log_id":"fakelog01","messageLimit":{"type":"within_limit"}}
+
+event: completion
+data: {"type":"completion","completion":" tal?","stop_reason":null,"model":"claude-2.1","stop":null,"log_id":"fakelog01","messageLimit":{"type":"within_limit"}}
+
+event: completion
+data: {"type":"completion","completion":"","stop_reason":"stop_sequence","model":"claude-2.1","stop":"\n\nHuman:","log_id":"fakelog01","messageLimit":{"type":"within_limit"}}
+

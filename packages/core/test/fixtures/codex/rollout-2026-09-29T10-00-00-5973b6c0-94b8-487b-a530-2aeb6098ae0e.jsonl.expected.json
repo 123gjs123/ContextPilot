@@ -1,0 +1,269 @@
+[
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:05.011Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "estimated": false
+    },
+    "contextSize": 0,
+    "contextWindow": 400000,
+    "windowSource": "table",
+    "idleSincePrevMs": 0,
+    "promptHash": "1fe59ea1a0af9e",
+    "promptTokens": 12,
+    "phase": "prompt",
+    "blocks": []
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:08.350Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 10002,
+      "output": 310,
+      "cacheRead": 2048,
+      "reasoning": 192,
+      "estimated": false
+    },
+    "contextSize": 12360,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 0,
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:24.050Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 446,
+      "output": 92,
+      "cacheRead": 11904,
+      "reasoning": 40,
+      "estimated": false
+    },
+    "contextSize": 12442,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 15700,
+    "toolCalls": [
+      {
+        "name": "shell",
+        "argsHash": "0ea47ef6b7f0a2",
+        "failed": true,
+        "resultTokens": 26
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:27.100Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 212,
+      "output": 158,
+      "cacheRead": 12288,
+      "reasoning": 48,
+      "estimated": false
+    },
+    "contextSize": 12658,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 3050,
+    "toolCalls": [
+      {
+        "name": "shell",
+        "argsHash": "1f50f3bcde6725",
+        "failed": false,
+        "resultTokens": 43
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 1,
+    "ts": "2026-09-29T10:00:30.100Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 284,
+      "output": 40,
+      "cacheRead": 12416,
+      "estimated": false
+    },
+    "contextSize": 12740,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 3000,
+    "toolCalls": [
+      {
+        "name": "apply_patch",
+        "argsHash": "1a51abfb21dca2",
+        "failed": false,
+        "resultTokens": 19
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 2,
+    "ts": "2026-09-29T10:12:00.000Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "estimated": false
+    },
+    "contextSize": 0,
+    "contextWindow": 400000,
+    "windowSource": "table",
+    "idleSincePrevMs": 689900,
+    "promptHash": "060c69a0535fce",
+    "promptTokens": 4,
+    "phase": "prompt",
+    "blocks": []
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 2,
+    "ts": "2026-09-29T10:12:02.100Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 13000,
+      "output": 50,
+      "cacheRead": 0,
+      "reasoning": 20,
+      "estimated": false
+    },
+    "contextSize": 13050,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 689900,
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 2,
+    "ts": "2026-09-29T10:12:11.100Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 330,
+      "output": 40,
+      "cacheRead": 12800,
+      "reasoning": 10,
+      "estimated": false
+    },
+    "contextSize": 13170,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 9000,
+    "toolCalls": [
+      {
+        "name": "shell",
+        "argsHash": "0191bd47548168",
+        "failed": true,
+        "resultTokens": 14
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 2,
+    "ts": "2026-09-29T10:12:20.100Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 332,
+      "output": 40,
+      "cacheRead": 12928,
+      "reasoning": 10,
+      "estimated": false
+    },
+    "contextSize": 13300,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 9000,
+    "toolCalls": [
+      {
+        "name": "shell",
+        "argsHash": "0191bd47548168",
+        "failed": true,
+        "resultTokens": 14
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  },
+  {
+    "source": "codex",
+    "provider": "openai",
+    "client": "codex_cli_rs",
+    "sessionId": "5973b6c0-94b8-487b-a530-2aeb6098ae0e",
+    "turn": 2,
+    "ts": "2026-09-29T10:12:30.000Z",
+    "model": "gpt-5-codex",
+    "tokens": {
+      "input": 334,
+      "output": 70,
+      "cacheRead": 13056,
+      "reasoning": 10,
+      "estimated": false
+    },
+    "contextSize": 13460,
+    "contextWindow": 272000,
+    "windowSource": "observed",
+    "idleSincePrevMs": 9900,
+    "toolCalls": [
+      {
+        "name": "shell",
+        "argsHash": "0191bd47548168",
+        "failed": true,
+        "resultTokens": 14
+      }
+    ],
+    "promptHash": "",
+    "phase": "response"
+  }
+]

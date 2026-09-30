@@ -1,0 +1,5 @@
+{
+  "text": "¡Claro! Un índice B-tree mantiene las claves ordenadas y permite búsquedas en O(log n). Ejemplo en SQL:\n\n```sql\nCREATE INDEX idx_usuarios_email ON usuarios(email);\n```\n\nAsí la consulta por email deja de recorrer toda la tabla 🚀.",
+  "model": "claude-sonnet-4-5-20250929",
+  "done": true
+}

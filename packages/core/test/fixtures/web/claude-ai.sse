@@ -1,0 +1,33 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"chatcompl_01FakeXyz","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","parent_uuid":"0f3c1a2b-0000-4000-8000-00000000aaaa","uuid":"0f3c1a2b-0000-4000-8000-00000000bbbb","content":[],"stop_reason":null,"stop_sequence":null,"trace_id":"fake"}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"start_timestamp":"2026-09-29T10:00:01.000Z","stop_timestamp":null,"type":"thinking","thinking":"","summaries":[],"cut_off":false}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"El usuario pide un saludo."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0,"stop_timestamp":"2026-09-29T10:00:02.000Z"}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"start_timestamp":"2026-09-29T10:00:02.000Z","stop_timestamp":null,"type":"text","text":"","citations":[]}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"¡Hola! "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"¿Cómo va todo?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1,"stop_timestamp":"2026-09-29T10:00:03.000Z"}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}
+
+event: message_limit
+data: {"type":"message_limit","message_limit":{"type":"within_limit","resetsAt":null,"remaining":null,"perModelLimit":null}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

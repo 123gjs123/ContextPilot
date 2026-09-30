@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "out/main.js",
+  "main": "out/main.cjs",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "start": "node scripts/start.mjs",
+    "smoke": "node build.mjs && node scripts/start.mjs --smoke",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@contextpilot/core": "*",

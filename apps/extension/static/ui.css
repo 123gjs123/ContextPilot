@@ -1,0 +1,29 @@
+/* Estilos compartidos de opciones y side panel. */
+:root {
+  --bg: #ffffff; --fg: #111827; --muted: #6b7280; --line: #e5e7eb; --card: #f9fafb;
+  --accent: #2563eb; --ok: #16a34a; --warn: #ca8a04; --bad: #dc2626; --gray: #9ca3af;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --fg: #e5e7eb; --muted: #9ca3af; --line: #2a2f36; --card: #181c22; --accent: #60a5fa; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+h1 { font-size: 16px; margin: 0 0 12px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.muted { color: var(--muted); }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > .grow { flex: 1; min-width: 0; }
+input[type=text], input[type=password] { width: 100%; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+button { font: inherit; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid currentColor; }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .gray { color: var(--gray); }
+.meter { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 6px 0; }
+.meter > span { display: block; height: 100%; }
+.big { font-size: 26px; font-weight: 700; }
+ul.list { list-style: none; padding: 0; margin: 0; }
+ul.list li { padding: 8px 0; border-top: 1px solid var(--line); }
+ul.list li:first-child { border-top: 0; }
+label.toggle { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; }

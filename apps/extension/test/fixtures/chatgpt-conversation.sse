@@ -1,0 +1,29 @@
+event: delta_encoding
+data: "v1"
+
+data: {"type": "resume_conversation_token", "kind": "topic", "token": "SYNTHETIC.token.value", "conversation_id": "68db1c2e-0000-8000-a000-333333333333"}
+
+event: delta
+data: {"p": "", "o": "add", "v": {"message": {"id": "b7c1d2e3-0000-4000-9000-444444444444", "author": {"role": "user", "name": null, "metadata": {}}, "create_time": 1759233600.0, "update_time": null, "content": {"content_type": "text", "parts": ["Explicame qué es un índice B-tree"]}, "status": "finished_successfully", "end_turn": null, "weight": 1.0, "metadata": {}, "recipient": "all", "channel": null}, "conversation_id": "68db1c2e-0000-8000-a000-333333333333", "error": null}, "c": 0}
+
+event: delta
+data: {"p": "", "o": "add", "v": {"message": {"id": "e5f6a7b8-0000-4000-9000-555555555555", "author": {"role": "assistant", "name": null, "metadata": {}}, "create_time": 1759233601.2, "update_time": null, "content": {"content_type": "text", "parts": [""]}, "status": "in_progress", "end_turn": null, "weight": 1.0, "metadata": {"model_slug": "gpt-5", "default_model_slug": "auto", "parent_id": "b7c1d2e3-0000-4000-9000-444444444444", "model_switcher_deny": []}, "recipient": "all", "channel": "final"}, "conversation_id": "68db1c2e-0000-8000-a000-333333333333", "error": null}, "c": 1}
+
+event: delta
+data: {"p": "/message/content/parts/0", "o": "append", "v": "Un índice B-tree "}
+
+event: delta
+data: {"v": "guarda las claves ordenadas en nodos balanceados, "}
+
+event: delta
+data: {"v": "así las búsquedas cuestan O(log n) ✅."}
+
+event: delta
+data: {"p": "", "o": "patch", "v": [{"p": "/message/content/parts/0", "o": "append", "v": " Fin."}, {"p": "/message/status", "o": "replace", "v": "finished_successfully"}, {"p": "/message/end_turn", "o": "replace", "v": true}]}
+
+data: {"type": "server_ste_metadata", "metadata": {"model_slug": "gpt-5", "turn_exchange_count": 1}, "conversation_id": "68db1c2e-0000-8000-a000-333333333333"}
+
+data: {"type": "message_stream_complete", "conversation_id": "68db1c2e-0000-8000-a000-333333333333"}
+
+data: [DONE]
+

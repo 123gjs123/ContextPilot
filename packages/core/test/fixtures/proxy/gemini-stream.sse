@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"parts": [{"text": "Pensando en la respuesta...", "thought": true}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 9800,"cachedContentTokenCount": 8192,"totalTokenCount": 9800,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 9800}]},"modelVersion": "gemini-2.5-flash","responseId": "fakeResp1"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "El resultado"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 9800,"cachedContentTokenCount": 8192,"totalTokenCount": 9820,"thoughtsTokenCount": 150},"modelVersion": "gemini-2.5-flash","responseId": "fakeResp1"}
+
+data: {"candidates": [{"content": {"parts": [{"text": " es 42."}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 9800,"candidatesTokenCount": 7,"cachedContentTokenCount": 8192,"totalTokenCount": 9957,"thoughtsTokenCount": 150,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 9800}]},"modelVersion": "gemini-2.5-flash","responseId": "fakeResp1"}
+

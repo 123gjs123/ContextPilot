@@ -1,6 +1,6 @@
 import { embed } from '../embed.js';
 import { estimateTokens } from '../estimate.js';
-import { contextWindowFor } from '../models.js';
+import { contextWindowFor, contextWindowInfo } from '../models.js';
 import { redact } from '../redact.js';
 import type { ToolCall, TurnEvent } from '../types.js';
 import { hash, ulid } from '../util.js';
@@ -11,7 +11,9 @@ import { splitBlocks } from './blocks.js';
 //   message.id y el mismo usage: se emite UN evento por message.id.
 // - Resultados de herramientas llegan en el registro 'user' siguiente; se adjuntan al próximo
 //   evento de respuesta (la llamada de API que los consumió).
-// - Registros de subagentes (isSidechain) no cuentan para el contexto de la sesión principal.
+// - Registros de subagentes (isSidechain, o archivos <sesión>/subagents/*.jsonl con opción
+//   sidechain) se emiten con sidechain=true y sessionId del padre: suman a acumulados y a R5/R8
+//   pero no cuentan para el contexto de la sesión principal (DECISIONS «subagentes»).
 
 interface PendingTool {
   name: string;
@@ -20,6 +22,10 @@ interface PendingTool {
 
 export interface ClaudeCodeParserOptions {
   embedPrompts?: boolean;
+  /** Sesión padre a la que se atribuyen los eventos de subagente (default: sessionId del registro). */
+  parentSessionId?: string;
+  /** true = todo el archivo es de un subagente (subagents/*.jsonl): cada línea se trata como sidechain. */
+  sidechain?: boolean;
 }
 
 export class ClaudeCodeParser {
@@ -27,6 +33,8 @@ export class ClaudeCodeParser {
   private seen = new Set<string>();
   private toolUses = new Map<string, PendingTool>();
   private pendingResults: ToolCall[] = [];
+  /** Resultados de herramientas de subagentes, separados de los del hilo principal. */
+  private pendingSideResults: ToolCall[] = [];
   private turn = 0;
   private lastAssistantTs?: number;
   private promptTs?: number;
@@ -52,7 +60,7 @@ export class ClaudeCodeParser {
     }
     if (rec.version) this.formatVersions.add(String(rec.version));
     if (rec.sessionId) this.sessionId = rec.sessionId;
-    if (rec.isSidechain) return [];
+    if (rec.isSidechain || this.opts.sidechain) return this.onSidechain(rec);
     if (rec.type === 'user') return this.onUser(rec);
     if (rec.type === 'assistant') return this.onAssistant(rec);
     return [];
@@ -61,21 +69,96 @@ export class ClaudeCodeParser {
   private onUser(rec: any): TurnEvent[] {
     const content = rec.message?.content;
     const ts = Date.parse(rec.timestamp ?? '') || Date.now();
-    if (Array.isArray(content)) {
-      let hadToolResult = false;
-      for (const block of content) {
-        if (block?.type !== 'tool_result') continue;
-        hadToolResult = true;
-        const tu = this.toolUses.get(block.tool_use_id);
-        this.pendingResults.push({
-          name: tu?.name ?? 'unknown',
-          argsHash: tu?.argsHash ?? '',
-          failed: block.is_error === true,
-          resultTokens: estimateTokens(textOf(block.content)),
-        });
-      }
-      if (hadToolResult) return [];
+    if (this.collectToolResults(content, this.pendingResults)) return [];
+    return this.onPrompt(rec, content, ts);
+  }
+
+  private collectToolResults(content: unknown, into: ToolCall[]): boolean {
+    if (!Array.isArray(content)) return false;
+    let had = false;
+    for (const block of content) {
+      if (block?.type !== 'tool_result') continue;
+      had = true;
+      const tu = this.toolUses.get(block.tool_use_id);
+      into.push({
+        name: tu?.name ?? 'unknown',
+        argsHash: tu?.argsHash ?? '',
+        failed: block.is_error === true,
+        resultTokens: estimateTokens(textOf(block.content)),
+      });
     }
+    return had;
+  }
+
+  /** Línea de subagente: sólo interesan resultados de herramientas y llamadas con usage. */
+  private onSidechain(rec: any): TurnEvent[] {
+    if (rec.type === 'user') {
+      this.collectToolResults(rec.message?.content, this.pendingSideResults);
+      return [];
+    }
+    if (rec.type !== 'assistant' || !rec.message) return [];
+    const msg = rec.message;
+    this.rememberToolUses(msg);
+    const usage = msg.usage;
+    const id: string | undefined = msg.id;
+    if (!id || !usage || this.seen.has(id) || msg.model === '<synthetic>') return [];
+    this.seen.add(id);
+    const ts = Date.parse(rec.timestamp ?? '') || Date.now();
+    const model: string = msg.model ?? '';
+    const input = usage.input_tokens ?? 0;
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+    const output = usage.output_tokens ?? 0;
+    const toolCalls = this.pendingSideResults;
+    this.pendingSideResults = [];
+    const win = contextWindowInfo(model, 'anthropic', { observedContext: input + cacheRead + cacheWrite + output });
+    return [
+      {
+        id: ulid(ts),
+        source: 'claude-code',
+        provider: 'anthropic',
+        client: rec.entrypoint ?? 'claude-code',
+        sessionId: this.opts.parentSessionId ?? rec.sessionId ?? this.sessionId ?? 'unknown',
+        turn: this.turn,
+        ts: new Date(ts).toISOString(),
+        model,
+        tokens: {
+          input,
+          output,
+          cacheRead,
+          cacheWrite,
+          reasoning: usage.output_tokens_details?.thinking_tokens || undefined,
+          estimated: false,
+        },
+        // Contexto propio del subagente (informativo): applyEvent no lo usa si sidechain=true.
+        contextSize: input + cacheRead + cacheWrite + output,
+        contextWindow: win.window,
+        windowSource: win.source,
+        idleSincePrevMs: 0,
+        toolCalls: toolCalls.length ? toolCalls : undefined,
+        promptHash: '',
+        phase: 'response',
+        sidechain: true,
+      },
+    ];
+  }
+
+  private rememberToolUses(msg: any): void {
+    for (const block of msg.content ?? []) {
+      if (block?.type === 'tool_use') {
+        this.toolUses.set(block.id, { name: block.name, argsHash: hash(JSON.stringify(block.input ?? {})) });
+      }
+    }
+  }
+
+  /** Ventana + origen: 'observed' cuando el contexto ya superó la nominal (1M inferido). */
+  private windowOf(model: string): { contextWindow: number; windowSource: TurnEvent['windowSource'] } {
+    const info = contextWindowInfo(model, 'anthropic');
+    if (this.windowFloor > info.window) return { contextWindow: this.windowFloor, windowSource: 'observed' };
+    return { contextWindow: info.window, windowSource: info.source };
+  }
+
+  private onPrompt(rec: any, content: unknown, ts: number): TurnEvent[] {
     if (rec.isMeta || rec.isCompactSummary) return [];
     const text = textOf(content);
     if (!text || text.startsWith('<command-') || text.startsWith('<local-command')) return [];
@@ -94,7 +177,7 @@ export class ClaudeCodeParser {
       model: this.lastModel,
       tokens: { input: 0, output: 0, estimated: false },
       contextSize: 0,
-      contextWindow: Math.max(this.windowFloor, contextWindowFor(this.lastModel, 'anthropic')),
+      ...this.windowOf(this.lastModel),
       idleSincePrevMs: this.lastAssistantTs ? Math.max(0, ts - this.lastAssistantTs) : 0,
       promptHash: hash(text),
       promptTokens,
@@ -109,11 +192,7 @@ export class ClaudeCodeParser {
     const msg = rec.message;
     if (!msg) return [];
     const ts = Date.parse(rec.timestamp ?? '') || Date.now();
-    for (const block of msg.content ?? []) {
-      if (block?.type === 'tool_use') {
-        this.toolUses.set(block.id, { name: block.name, argsHash: hash(JSON.stringify(block.input ?? {})) });
-      }
-    }
+    this.rememberToolUses(msg);
     const id: string | undefined = msg.id;
     const usage = msg.usage;
     if (!id || !usage || this.seen.has(id)) return [];
@@ -154,7 +233,7 @@ export class ClaudeCodeParser {
         model,
         tokens: { input, output, cacheRead, cacheWrite, reasoning: thinking || undefined, estimated: false },
         contextSize: ctx,
-        contextWindow: Math.max(this.windowFloor, contextWindowFor(model, 'anthropic')),
+        ...this.windowOf(model),
         idleSincePrevMs: idle,
         toolCalls: toolCalls.length ? toolCalls : undefined,
         promptHash: '',

@@ -1,0 +1,8 @@
+data: {"message": {"id": "a-1001", "author": {"role": "assistant", "name": null, "metadata": {}}, "create_time": 1759140000.0, "content": {"content_type": "text", "parts": ["Hola"]}, "status": "in_progress", "end_turn": null, "weight": 1.0, "metadata": {"model_slug": "gpt-4o", "message_type": "next"}, "recipient": "all"}, "conversation_id": "68ab0000-0000-4000-8000-00000000beef", "error": null}
+
+data: {"message": {"id": "a-1001", "author": {"role": "assistant", "name": null, "metadata": {}}, "create_time": 1759140000.0, "content": {"content_type": "text", "parts": ["Hola, ¿cómo"]}, "status": "in_progress", "end_turn": null, "weight": 1.0, "metadata": {"model_slug": "gpt-4o", "message_type": "next"}, "recipient": "all"}, "conversation_id": "68ab0000-0000-4000-8000-00000000beef", "error": null}
+
+data: {"message": {"id": "a-1001", "author": {"role": "assistant", "name": null, "metadata": {}}, "create_time": 1759140000.0, "content": {"content_type": "text", "parts": ["Hola, ¿cómo estás?"]}, "status": "finished_successfully", "end_turn": true, "weight": 1.0, "metadata": {"model_slug": "gpt-4o", "finish_details": {"type": "stop"}}, "recipient": "all"}, "conversation_id": "68ab0000-0000-4000-8000-00000000beef", "error": null}
+
+data: [DONE]
+

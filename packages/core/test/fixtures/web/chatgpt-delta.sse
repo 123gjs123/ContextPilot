@@ -1,0 +1,36 @@
+event: delta_encoding
+data: "v1"
+
+data: {"type": "resume_conversation_token", "token": "fake.token.value", "conversation_id": "68ab0000-0000-4000-8000-00000000c0de"}
+
+event: delta
+data: {"p": "", "o": "add", "v": {"message": {"id": "u-0001", "author": {"role": "user", "name": null, "metadata": {}}, "content": {"content_type": "text", "parts": ["hola, explicame X"]}, "status": "finished_successfully", "metadata": {}}, "conversation_id": "68ab0000-0000-4000-8000-00000000c0de", "error": null}, "c": 0}
+
+event: delta
+data: {"p": "", "o": "add", "v": {"message": {"id": "t-0002", "author": {"role": "assistant", "name": null, "metadata": {}}, "create_time": 1759140001.0, "content": {"content_type": "thoughts", "thoughts": [], "source_analysis_msg_id": "x"}, "status": "in_progress", "end_turn": null, "metadata": {"model_slug": "gpt-5-thinking"}, "recipient": "all"}, "conversation_id": "68ab0000-0000-4000-8000-00000000c0de", "error": null}, "c": 1}
+
+event: delta
+data: {"p": "/message/content/thoughts", "o": "append", "v": [{"summary": "Analizando", "content": "Pienso en X."}]}
+
+event: delta
+data: {"p": "", "o": "patch", "v": [{"p": "/message/status", "o": "replace", "v": "finished_successfully"}, {"p": "/message/end_turn", "o": "replace", "v": false}]}
+
+event: delta
+data: {"p": "", "o": "add", "v": {"message": {"id": "a-0003", "author": {"role": "assistant", "name": null, "metadata": {}}, "create_time": 1759140003.0, "content": {"content_type": "text", "parts": [""]}, "status": "in_progress", "end_turn": null, "metadata": {"model_slug": "gpt-5-thinking", "default_model_slug": "auto"}, "recipient": "all"}, "conversation_id": "68ab0000-0000-4000-8000-00000000c0de", "error": null}, "c": 2}
+
+event: delta
+data: {"p": "/message/content/parts/0", "o": "append", "v": "X es"}
+
+event: delta
+data: {"v": " una letra"}
+
+event: delta
+data: {"v": " del alfabeto"}
+
+event: delta
+data: {"p": "", "o": "patch", "v": [{"p": "/message/content/parts/0", "o": "append", "v": "."}, {"p": "/message/status", "o": "replace", "v": "finished_successfully"}, {"p": "/message/end_turn", "o": "replace", "v": true}]}
+
+data: {"type": "message_stream_complete", "conversation_id": "68ab0000-0000-4000-8000-00000000c0de"}
+
+data: [DONE]
+

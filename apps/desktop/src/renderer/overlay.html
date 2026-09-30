@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>ContextPilot</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="overlay">
+  <header class="ov-head">
+    <span id="dot" class="dot gray"></span>
+    <h1>ContextPilot</h1>
+    <button id="btnDash" title="Abrir dashboard">Dashboard</button>
+    <button id="btnClose" title="Cerrar (Esc)" aria-label="Cerrar">✕</button>
+  </header>
+  <section id="body" class="ov-body" aria-live="polite"></section>
+  <footer class="ov-foot"><span id="desktopStatus" class="muted"></span></footer>
+  <script src="overlay.js"></script>
+</body>
+</html>
