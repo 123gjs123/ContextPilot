@@ -1,0 +1,20 @@
+{
+  "name": "contextpilot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Copiloto local de consumo para sesiones con asistentes de IA",
+  "workspaces": ["packages/*", "apps/*"],
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -b",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

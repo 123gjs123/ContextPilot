@@ -1,0 +1,17 @@
+{
+  "name": "@contextpilot/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@contextpilot/core": "*",
+    "chrome-remote-interface": "^0.34.0"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1"
+  }
+}
