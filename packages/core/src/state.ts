@@ -196,12 +196,16 @@ export interface SessionView {
   displayName?: string;
   /** CP-060 (coaching): TTL de caché observado (ms), para la cuenta regresiva «caché expira en…». */
   cacheTtlMs?: number;
+  /** R6/R11: servidores MCP (`mcp__<srv>`) desactivados por ContextPilot en este proyecto. */
+  mcpDisabled?: string[];
 }
 
 /** Metadatos de sesión que viven sólo en memoria del daemon (CP-061). */
 export interface SessionMeta {
   project?: string;
   title?: string;
+  /** R6/R11: servidores MCP que ContextPilot desactivó en la carpeta de la sesión. */
+  mcpDisabled?: string[];
 }
 
 function phaseOf(e: TurnEvent): 'prompt' | 'response' {
@@ -231,6 +235,7 @@ export function toView(s: SessionState, now = Date.now(), meta: SessionMeta = {}
     cacheTtlMs: s.cacheTtlMs,
     ...(project ? { project } : {}),
     ...(title ? { title } : {}),
+    ...(meta.mcpDisabled?.length ? { mcpDisabled: meta.mcpDisabled } : {}),
     displayName: sessionDisplayName({ sessionId: s.sessionId, source: s.source, client: s.client, project, title }),
   };
 }

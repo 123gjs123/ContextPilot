@@ -11,6 +11,7 @@ import {
   RuleEngine,
   toView,
   ulid,
+  upgradeLegacyR6,
   type Feedback,
   type Provider,
   type SessionMeta,
@@ -132,7 +133,7 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     } catch {
       hook = undefined;
     }
-    return { project: hook?.project, title: hook?.title ?? this.titles.get(sessionId) };
+    return { project: hook?.project, title: hook?.title ?? this.titles.get(sessionId), mcpDisabled: hook?.mcpDisabled };
   }
 
   /** Vista de la sesión con nombre legible (CP-061). */
@@ -174,7 +175,10 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
   /** D-2: devuelve la versión con foco si existe (en memoria); si no, la persistida. */
   decorate<T extends Suggestion>(s: T): T {
     const d = this.decorated.get(s.id);
-    return d ? { ...s, actions: d.actions } : s;
+    if (d) return { ...s, actions: d.actions };
+    // R6 guardada con el «Ver lista» anterior: acciones nuevas (desactivar + guía).
+    const legacy = upgradeLegacyR6(s, this.sessions.get(s.sessionId)?.source);
+    return legacy ? { ...s, actions: legacy } : s;
   }
 
   // ---------- ingesta ----------
@@ -435,29 +439,53 @@ export class Pipeline extends EventEmitter<PipelineEvents> {
     this.r2Timers.set(s.sessionId, t);
   }
 
-  private fireR2(sessionId: string, lastTurnAt: string): void {
-    this.r2Timers.delete(sessionId);
+  /** Reemite la vista de una sesión (p. ej. tras desactivar/reactivar MCP en su proyecto). */
+  refreshSession(sessionId: string): void {
+    const s = this.getSession(sessionId);
+    if (s) this.emit('session', this.view(s));
+  }
+
+  /**
+   * R11: señal del prompt que no viaja en el transcript (calculada por el daemon con el texto del hook,
+   * que no se guarda). Evalúa las reglas de fase 'prompt' con un evento sintético.
+   */
+  promptSignal(sessionId: string, extra: Pick<TurnEvent, 'mcpNeeded'>): void {
     if (this.disposed) return;
-    const s = this.sessions.get(sessionId);
-    if (!s || s.lastTurnAt !== lastTurnAt || s.lastPhase !== 'response') return;
+    const s = this.getSession(sessionId);
+    if (!s) return;
     const now = Date.now();
-    // Evento sintético de fase 'prompt': no se persiste ni modifica el estado.
-    const ev: TurnEvent = {
+    const ev = { ...this.syntheticPrompt(s, now), ...extra };
+    const out = this.engine.evaluate({ event: ev, prev: s, state: s, now });
+    for (const sug of out.published) this.publish(sug, s.source);
+  }
+
+  /** Evento sintético de fase 'prompt': no se persiste ni modifica el estado. */
+  private syntheticPrompt(s: SessionState, now: number): TurnEvent {
+    return {
       id: ulid(now),
       source: s.source,
       provider: s.provider,
       client: s.client,
-      sessionId,
+      sessionId: s.sessionId,
       turn: s.turns,
       ts: new Date(now).toISOString(),
       model: s.model,
       tokens: { input: 0, output: 0, estimated: false },
       contextSize: s.contextSize,
       contextWindow: s.contextWindow,
-      idleSincePrevMs: now - Date.parse(lastTurnAt),
+      idleSincePrevMs: now - Date.parse(s.lastTurnAt),
       promptHash: '',
       phase: 'prompt',
     };
+  }
+
+  private fireR2(sessionId: string, lastTurnAt: string): void {
+    this.r2Timers.delete(sessionId);
+    if (this.disposed) return;
+    const s = this.sessions.get(sessionId);
+    if (!s || s.lastTurnAt !== lastTurnAt || s.lastPhase !== 'response') return;
+    const now = Date.now();
+    const ev = this.syntheticPrompt(s, now);
     const out = this.engine.evaluate({ event: ev, prev: s, state: s, now });
     for (const sug of out.published) this.publish(sug, s.source);
     if (out.published.some((x) => x.ruleId === 'R2')) {

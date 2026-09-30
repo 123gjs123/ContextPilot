@@ -16,6 +16,8 @@ const cards = new Map<string, CardEntry>();
 let order: string[] = [];
 let accountSig = '';
 let busy = false;
+/** Guías/detalles desplegados (clave del botón), para conservarlos entre redibujos. */
+const expanded = new Set<string>();
 
 async function act(fn: () => Promise<{ ok: boolean; message: string }>): Promise<void> {
   if (busy) return;
@@ -31,9 +33,27 @@ async function act(fn: () => Promise<{ ok: boolean; message: string }>): Promise
 /** Botones de una sugerencia: sus acciones + aceptar / ignorar / posponer. */
 function actionButtons(suggestionId: string, actions: SuggestionRow['actions'], keyPrefix: string): HTMLElement {
   const btns = h('div', { class: 'btns' });
+  const details: HTMLElement[] = [];
   for (const a of actions) {
+    const key = `${keyPrefix}:a${a.index}`;
+    // Guía / ejemplo: se despliega en la tarjeta (un toast de 4 s no alcanza para leer pasos).
+    if (a.kind === 'show-detail' && a.detail) {
+      const open = expanded.has(key);
+      btns.append(
+        h('button', { 'data-key': key, 'aria-expanded': String(open), onclick: (e: Event) => {
+          if (expanded.has(key)) expanded.delete(key);
+          else expanded.add(key);
+          const now = expanded.has(key);
+          (e.currentTarget as HTMLElement).setAttribute('aria-expanded', String(now));
+          (e.currentTarget as HTMLElement).textContent = `${a.label} ${now ? '▴' : '▾'}`;
+          (e.currentTarget as HTMLElement).closest('.btns-wrap')?.querySelector<HTMLElement>(`[data-detail="${CSS.escape(key)}"]`)?.classList.toggle('hidden', !now);
+        } }, open ? `${a.label} ▴` : `${a.label} ▾`),
+      );
+      details.push(h('pre', { class: `guide${open ? '' : ' hidden'}`, 'data-detail': key }, a.detail));
+      continue;
+    }
     btns.append(
-      h('button', { class: a.index === 0 ? 'primary' : '', 'data-key': `${keyPrefix}:a${a.index}`, onclick: () => act(() => cp().runAction(suggestionId, a.index)) }, a.label),
+      h('button', { class: a.index === 0 ? 'primary' : '', 'data-key': key, onclick: () => act(() => cp().runAction(suggestionId, a.index)) }, a.label),
     );
   }
   btns.append(
@@ -41,7 +61,25 @@ function actionButtons(suggestionId: string, actions: SuggestionRow['actions'], 
     h('button', { 'data-key': `${keyPrefix}:no`, onclick: () => act(() => cp().feedback(suggestionId, 'dismissed')) }, 'Ignorar'),
     h('button', { 'data-key': `${keyPrefix}:zz`, onclick: () => act(() => cp().feedback(suggestionId, 'snoozed')) }, 'Posponer 15 min'),
   );
-  return btns;
+  return h('div', { class: 'btns-wrap' }, btns, ...details);
+}
+
+/** R6/R11: MCP desactivados por ContextPilot en el proyecto, con «Reactivar» por servidor. */
+function mcpSection(c: LiveCard): HTMLElement {
+  const reactivate = (servers: string[]) =>
+    act(async () => {
+      const r = await cp().api<{ servers: string[] }>('POST', '/mcp/enable', { sessionId: c.sessionId, servers });
+      if (!r.ok) return { ok: false, message: `No se pudo reactivar: ${r.error ?? r.status}` };
+      return { ok: true, message: `Reactivado: ${servers.map((k) => c.mcpDisabled.find((m) => m.key === k)?.name ?? k).join(', ')}. Disponible desde el próximo turno (si no, /mcp o sesión nueva).` };
+    });
+  return h(
+    'section',
+    { class: 'mcp-off', 'aria-label': 'MCP desactivados en este proyecto' },
+    h('div', { class: 'coach-kicker' }, 'MCP desactivados en este proyecto'),
+    h('ul', {}, c.mcpDisabled.map((m) =>
+      h('li', {}, h('span', {}, m.name), h('button', { 'data-key': `${c.sessionId}:mcp:${m.key}`, onclick: () => reactivate([m.key]) }, 'Reactivar')))),
+    c.mcpDisabled.length > 1 ? h('button', { 'data-key': `${c.sessionId}:mcp:*`, onclick: () => reactivate(c.mcpDisabled.map((m) => m.key)) }, 'Reactivar todos') : null,
+  );
 }
 
 const SEV_ICON: Record<string, string> = { critical: '⛔', warn: '⚠', info: 'ℹ' };
@@ -93,6 +131,7 @@ function cardBody(c: LiveCard): HTMLElement[] {
   } else if (c.tip) {
     out.push(h('div', { class: 'tip', role: 'note' }, h('b', {}, 'Consejo: '), c.tip));
   }
+  if (c.mcpDisabled.length) out.push(mcpSection(c));
   return out;
 }
 

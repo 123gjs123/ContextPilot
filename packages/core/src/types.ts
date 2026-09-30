@@ -84,6 +84,11 @@ export interface TurnEvent {
    * web). Contenido del usuario: el pipeline lo guarda sólo en memoria, nunca en cp.db.
    */
   title?: string;
+  /**
+   * Extensión (R11): servidores MCP desactivados por ContextPilot que el prompt parece necesitar.
+   * Lo calcula el daemon con el texto del hook UserPromptSubmit, que no se guarda.
+   */
+  mcpNeeded?: string[];
   /** Extensión (CP-064, R4): palabras con contenido del prompt (sin stopwords, > 2 letras). */
   promptContentWords?: number;
 }
@@ -94,7 +99,8 @@ export interface TurnEvent {
  */
 export type WindowSource = 'table' | 'default' | 'observed';
 
-export type ActionKind = 'copy' | 'handoff' | 'open-session' | 'show-detail';
+/** `mcp-disable` / `mcp-enable`: payload = servidores `mcp__<srv>` separados por coma (R6 / R11). */
+export type ActionKind = 'copy' | 'handoff' | 'open-session' | 'show-detail' | 'mcp-disable' | 'mcp-enable';
 
 export interface SuggestionAction {
   kind: ActionKind;

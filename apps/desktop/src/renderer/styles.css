@@ -251,9 +251,9 @@ ul.intro, ol.intro { padding-left: 20px; }
 .lc-stat dt { font-size: 11px; color: var(--text-muted); }
 .lc-stat dd { margin: 1px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @container (max-width: 360px) { .lc-stats { grid-template-columns: repeat(2, 1fr); } }
-.coach { border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid var(--accent); background: var(--surface-2); padding: 9px 11px; }
-.coach.sev-warn { border-left-color: var(--state-amber); }
-.coach.sev-critical { border-left-color: var(--state-red); }
+/* Toda buena práctica recomendada se marca en rojo, sea cual sea su severidad. */
+.coach { border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid var(--state-red); background: var(--surface-2); padding: 9px 11px; }
+.coach-title { color: var(--state-red); }
 .coach-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; }
 .coach-title { font-weight: 600; margin: 3px 0 6px; }
 .coach p { margin: 4px 0; line-height: 1.4; color: var(--text-secondary); }
@@ -318,3 +318,11 @@ td.model, td.when { white-space: nowrap; font-size: 12px; }
 .rule-item .info { position: static; }
 .rule-item .popover { left: 8px; right: 8px; width: auto; max-width: 520px; top: 44px; }
 .coach, .acct-warn { overflow-wrap: anywhere; }
+
+/* R6/R11: guía desplegable y MCP desactivados por proyecto. */
+.coach .guide { white-space: pre-wrap; font-family: inherit; font-size: 12.5px; line-height: 1.45; margin: 8px 0 0; padding: 8px 10px;
+  border-radius: 6px; border: 1px dashed var(--border); background: var(--surface); color: var(--text-secondary); }
+.mcp-off { margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); padding: 8px 11px; }
+.mcp-off ul { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
+.mcp-off li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mcp-off button { font-size: 12px; padding: 3px 9px; }

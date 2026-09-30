@@ -18,7 +18,7 @@ export interface LineParser {
   /** D-2: foco en memoria para `/compact <foco>` (sólo Claude Code). */
   focus?(): string | undefined;
   /** CP-061: proyecto (cwd) y título de la conversación, en memoria. */
-  meta?(): { project?: string; title?: string };
+  meta?(): { project?: string; title?: string; cwd?: string };
 }
 
 export interface JsonlAdapterOptions {
@@ -96,7 +96,7 @@ export class JsonlAdapter {
   }
 
   /** CP-061: proyecto/título del parser en memoria del transcript principal de la sesión. */
-  metaFor(sessionId: string): { project?: string; title?: string } | undefined {
+  metaFor(sessionId: string): { project?: string; title?: string; cwd?: string } | undefined {
     const file = this.fileBySession.get(sessionId);
     const p = file ? this.parsers.get(file) : undefined;
     return p?.meta?.();

@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { aggregateTeam, projectPlan, R10, RuleEngine, type AdapterHealth, type Projection, type Provider } from '@contextpilot/core';
+import { aggregateTeam, projectPlan, R10, serversMentioned, RuleEngine, type AdapterHealth, type Projection, type Provider } from '@contextpilot/core';
 import { createClaudeCodeAdapter, createCodexAdapter, defaultClaudeProjectsDir, defaultCodexSessionsDir } from './adapters/cli.js';
 import { GeminiAdapter } from './adapters/gemini.js';
 import { configuredMcpServers } from './adapters/mcpConfig.js';
@@ -22,6 +22,7 @@ import { findClaudeBin, handoff, type HandoffResult } from './handoff.js';
 import { HealthRegistry } from './health.js';
 import { createLogger, type Logger } from './log.js';
 import { encodeProjectDir, ensureDirs, loadOrCreateToken, resolvePaths, type DaemonPaths } from './paths.js';
+import { McpToggles, type ToggleResult } from './mcpToggle.js';
 import { Pipeline } from './pipeline.js';
 import { Proxy, upstreamsFromEnv, type ProxyOptions } from './proxy.js';
 import { createApp, redactPrompt, type ServerMsg } from './server.js';
@@ -97,6 +98,9 @@ export class Daemon {
   private env: NodeJS.ProcessEnv;
   private closeWss: () => void = () => {};
   readonly handoffCwd: string;
+  private readonly mcpToggles: McpToggles;
+  /** R6/R11: sesión → cwd informado por los hooks (sólo memoria). */
+  private readonly cwdBySession = new Map<string, string>();
 
   constructor(private o: DaemonOptions) {
     this.env = o.env ?? process.env;
@@ -111,6 +115,29 @@ export class Daemon {
       this.log.warn(loaded.error);
     }
     this.handoffCwd = join(this.paths.home, 'handoff');
+    this.mcpToggles = new McpToggles(join(this.paths.home, 'mcp-toggles.json'));
+  }
+
+  /** R6/R11: carpeta de trabajo de la sesión (hooks de Claude Code o, si no, el transcript). Sólo memoria. */
+  cwdFor(sessionId: string): string | undefined {
+    return this.cwdBySession.get(sessionId) ?? this.claude?.metaFor(sessionId)?.cwd;
+  }
+
+  /** R6/R11: desactiva o reactiva servidores MCP en el proyecto de la sesión y refresca su tarjeta. */
+  toggleMcp(sessionId: string, servers: string[], op: 'disable' | 'enable'): ToggleResult & { project?: string } {
+    const cwd = this.cwdFor(sessionId);
+    if (!cwd) return { ok: false, error: 'No conozco la carpeta del proyecto de esta sesión: enviá un prompt en la sesión y reintentá.' };
+    const r = op === 'disable' ? this.mcpToggles.disable(cwd, servers) : this.mcpToggles.enable(cwd, servers);
+    if (r.ok) {
+      this.log.info(`MCP ${op}: ${r.servers.join(', ') || '(sin cambios)'} en ${r.file}`);
+      this.pipeline.refreshSession(sessionId);
+    }
+    return r;
+  }
+
+  /** R6/R11: servidores desactivados por ContextPilot en el proyecto de la sesión. */
+  mcpDisabled(sessionId: string): string[] {
+    return this.mcpToggles.list(this.cwdFor(sessionId));
   }
 
   get claudeProjectsDir(): string {
@@ -130,7 +157,11 @@ export class Daemon {
       // D-2: foco de /compact desde el parser en memoria del transcript de la sesión.
       focusFor: (sid) => this.claude?.focusFor(sid),
       // CP-061: nombre legible (proyecto + título) desde los parsers en memoria; nunca se persiste el título.
-      metaFor: (sid) => this.claude?.metaFor(sid) ?? this.codex?.metaFor(sid),
+      metaFor: (sid) => {
+        const m = this.claude?.metaFor(sid) ?? this.codex?.metaFor(sid);
+        const mcpDisabled = this.mcpToggles.list(this.cwdFor(sid));
+        return mcpDisabled.length ? { ...m, mcpDisabled } : m;
+      },
     });
     this.proxy = new Proxy({
       env: this.env,
@@ -350,6 +381,12 @@ export class Daemon {
         if (inside) this.claude.poke(resolve(path));
         else void this.claude.tailer.discover(resolve(path), false);
       }
+    }
+    if (sid && typeof body?.cwd === 'string' && isAbsolute(body.cwd)) this.cwdBySession.set(sid, body.cwd);
+    // R11: ¿el prompt pide algo de un MCP que desactivamos? El texto se usa acá y se descarta.
+    if (name === 'UserPromptSubmit' && sid && typeof body?.prompt === 'string') {
+      const needed = serversMentioned(body.prompt, this.mcpToggles.list(this.cwdFor(sid)));
+      if (needed.length) this.pipeline.promptSignal(sid, { mcpNeeded: needed });
     }
     // RNF-01: el texto del prompt sólo se persiste con opt-in de la fuente.
     if (name === 'UserPromptSubmit' && sid && this.config.storeContent['claude-code']) {

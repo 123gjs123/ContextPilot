@@ -132,7 +132,8 @@ export interface SuggestionRow {
   detail: string;
   savingText?: string;
   estimatedSavingTokens?: number;
-  actions: { index: number; kind: string; label: string }[];
+  /** `detail`: texto de las acciones `show-detail` (guía, ejemplo) para mostrarlo desplegado. */
+  actions: { index: number; kind: string; label: string; detail?: string }[];
 }
 
 export interface PlanUsageView {

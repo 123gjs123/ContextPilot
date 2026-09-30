@@ -56,7 +56,7 @@ describe('nombres de sesión (CP-061)', () => {
     // Subagentes: el proyecto (mismo cwd) sí, el título no.
     const sub = new ClaudeCodeParser({ sidechain: true, parentSessionId: 'P' });
     const subEvents = fixture('claude-code/session-subagent.jsonl').split('\n').flatMap((l) => sub.feed(l));
-    expect(sub.meta()).toEqual({ project: 'xxxxxxxxxxxxxx', title: undefined });
+    expect(sub.meta()).toMatchObject({ project: 'xxxxxxxxxxxxxx', title: undefined });
     expect(applyEvent(undefined, subEvents[0]!).project).toBe('xxxxxxxxxxxxxx');
   });
   it('Codex: project = session_meta.cwd', () => {

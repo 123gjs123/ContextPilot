@@ -64,6 +64,7 @@ const SHORT_BY_RULE: Record<string, string> = {
   R4: 'sesión nueva',
   R5: 'grep/head',
   R6: 'MCP sin uso',
+  R11: 'reactivar MCP',
   R8: 'loop!',
   R9: 'bloque repetido',
   W1: 'traspaso',

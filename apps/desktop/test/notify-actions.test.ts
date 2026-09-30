@@ -4,10 +4,10 @@ import { NotificationFilter, notificationContent } from '../src/shared/notify.js
 import { NOW, sug } from './helpers.js';
 
 describe('notificaciones (CP-047)', () => {
-  it('sólo critical notifica; warn/info nunca', () => {
+  it('toda buena práctica recomendada notifica, sea info, warn o critical', () => {
     const f = new NotificationFilter();
-    expect(f.shouldNotify(sug({ id: 'i', severity: 'info' }), NOW)).toBe(false);
-    expect(f.shouldNotify(sug({ id: 'w', severity: 'warn' }), NOW)).toBe(false);
+    expect(f.shouldNotify(sug({ id: 'i', severity: 'info' }), NOW)).toBe(true);
+    expect(f.shouldNotify(sug({ id: 'w', severity: 'warn' }), NOW)).toBe(true);
     expect(f.shouldNotify(sug({ id: 'c', severity: 'critical' }), NOW)).toBe(true);
   });
 
@@ -31,7 +31,7 @@ describe('notificaciones (CP-047)', () => {
 
   it('contenido recortado', () => {
     const c = notificationContent({ title: 'Loop', detail: 'x'.repeat(500) });
-    expect(c.title).toBe('ContextPilot · Loop');
+    expect(c.title).toBe('Buena práctica recomendada · Loop');
     expect(c.body.length).toBe(200);
   });
 });
@@ -66,5 +66,16 @@ describe('acciones (CP-046.2/.3)', () => {
     const w = handoffClipboardText({ summary: '  resumen  ', method: 'claude-cli' }, 'web');
     expect(w.text).toBe('resumen');
     expect(w.message).toContain('chat nuevo');
+  });
+});
+
+describe('acciones MCP (R6/R11)', () => {
+  it('mcp-disable / mcp-enable → plan con servidores válidos', async () => {
+    const { planAction, mcpToggleMessage } = await import('../src/shared/actions.js');
+    const s = sug({ sessionId: 'S1', actions: [{ kind: 'mcp-disable', label: 'Desactivar', payload: 'mcp__claude_ai_Atlassian_Rovo,Bash' }, { kind: 'mcp-enable', label: 'R', payload: '' }] });
+    expect(planAction(s, 0, 'claude-code')).toEqual({ kind: 'mcp', op: 'disable', sessionId: 'S1', servers: ['mcp__claude_ai_Atlassian_Rovo'] });
+    expect(planAction(s, 1, 'claude-code').kind).toBe('error');
+    expect(mcpToggleMessage('disable', ['mcp__claude_ai_Atlassian_Rovo'], ['mcp__claude_ai_Atlassian_Rovo'])).toContain('Reactivar');
+    expect(mcpToggleMessage('enable', ['mcp__x'], [])).toContain('no cambié nada');
   });
 });

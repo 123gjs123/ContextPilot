@@ -32,7 +32,7 @@ export interface DesktopSettings {
   cdpPort: number;
   /** Engancharse al puerto CDP al iniciar (si alguien ya abrió Claude Desktop con el puerto). */
   cdpAttachOnStart: boolean;
-  /** Notificaciones de Windows para `critical`. */
+  /** Notificaciones de Windows para cada buena práctica recomendada. */
   notifications: boolean;
 }
 
@@ -69,6 +69,7 @@ const ALLOWED: { method: string; re: RegExp }[] = [
   { method: 'PUT', re: /^\/config$/ },
   { method: 'POST', re: /^\/config\/import(\?dryRun=(true|false))?$/ },
   { method: 'POST', re: /^\/handoff$/ },
+  { method: 'POST', re: /^\/mcp\/(disable|enable)$/ },
   { method: 'POST', re: /^\/suggestions\/[^/?#]+\/feedback$/ },
 ];
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Source } from '@contextpilot/core';
 import { launchClaudeDesktop, ClaudeDesktopAdapter, type AdapterReport } from '../cdp/claudeDesktop.js';
-import { handoffClipboardText, planAction } from '../shared/actions.js';
+import { handoffClipboardText, mcpToggleMessage, planAction } from '../shared/actions.js';
 import { NotificationFilter, notificationContent } from '../shared/notify.js';
 import { findSuggestion, initialState, markHandled, reduce, setConnection, type DesktopState } from '../shared/store.js';
 import type { AppSnapshot, Feedback, HandoffResponse, PlanUsageView, ServerMsg, Suggestion, TrayColor } from '../shared/types.js';
@@ -67,10 +67,8 @@ function maybeNotify(s: Suggestion, now: number): void {
   if (!notifier.shouldNotify(s, now) || SMOKE || !Notification.isSupported()) return;
   const { title, body } = notificationContent(s);
   const n = new Notification({ title, body, urgency: 'critical' });
-  n.on('click', () => {
-    showOverlay();
-    overlay?.webContents.send('cp:focusSuggestion', s.id);
-  });
+  // Abre el dashboard en la sesión: la tarjeta está en rojo con la práctica recomendada.
+  n.on('click', () => openDashboard(s.sessionId.startsWith('account:') ? undefined : s.sessionId));
   n.show();
 }
 
@@ -217,6 +215,12 @@ async function runAction(id: string, index: number): Promise<{ ok: boolean; mess
       return { ok: true, message: 'Abriendo sesión en el dashboard' };
     case 'show-detail':
       return { ok: true, message: plan.message };
+    case 'mcp': {
+      const r = await client.request<{ servers: string[] }>('POST', `/mcp/${plan.op}`, { sessionId: plan.sessionId, servers: plan.servers });
+      if (!r.ok || !r.data) return { ok: false, message: `No se pudo ${plan.op === 'disable' ? 'desactivar' : 'reactivar'}: ${r.error ?? r.status}` };
+      await sendFeedback(id, 'accepted');
+      return { ok: true, message: mcpToggleMessage(plan.op, plan.servers, r.data.servers) };
+    }
     case 'error':
       return { ok: false, message: plan.message };
   }

@@ -21,12 +21,12 @@ describe('estado y color de la tarjeta (CP-059)', () => {
     expect(cardState(base, 200_000)).toBe('ok');
     expect(cardState({ ...base, contextPct: 0.55 }, 200_000)).toBe('warn');
     expect(cardState({ ...base, contextPct: 0.8 }, 200_000)).toBe('critical');
-    expect(cardState({ ...base, suggestion: { severity: 'info' } }, 200_000)).toBe('ok');
-    expect(cardState({ ...base, suggestion: { severity: 'warn' } }, 200_000)).toBe('warn');
+    expect(cardState({ ...base, suggestion: { severity: 'info' } }, 200_000)).toBe('critical');
+    expect(cardState({ ...base, suggestion: { severity: 'warn' } }, 200_000)).toBe('critical');
     expect(cardState({ ...base, contextPct: 0.55, suggestion: { severity: 'critical' } }, 200_000)).toBe('critical');
     expect(cardState({ ...base, noData: true, suggestion: { severity: 'critical' } }, 200_000)).toBe('nodata');
     expect(cardState({ noData: false, contextPct: 0 }, 0)).toBe('nodata');
-    expect(cardState({ noData: false, contextPct: 0, suggestion: { severity: 'warn' } }, 0)).toBe('warn');
+    expect(cardState({ noData: false, contextPct: 0, suggestion: { severity: 'warn' } }, 0)).toBe('critical');
     expect(CARD_STATE_COLOR).toEqual({ ok: 'green', warn: 'amber', critical: 'red', nodata: 'gray' });
   });
   it('relTime', () => {
@@ -50,8 +50,9 @@ describe('tarjeta en vivo (CP-059/060/061)', () => {
     expect(c.name).toBe('contextpilot — Monitor');
     expect(c.shortId).toBe('s1');
     expect(c.badge.short).toBe('CC');
-    expect(c.state).toBe('warn');
-    expect(c.color).toBe('amber');
+    expect(c.state).toBe('critical');
+    expect(c.color).toBe('red');
+    expect(c.stateLabel).toBe('Buena práctica recomendada');
     expect(c).toMatchObject({ ctxText: '72%', ctxTokensText: '144k / 200k', cacheText: '90%', turnsText: '3', burnText: '12k/min', lastText: 'hace 1 min' });
     expect(c.coaching).toMatchObject({ ruleId: 'R1', ruleName: 'Contexto alto', what: 'El contexto está al 72% (144k de 200k tokens).' });
     expect(c.coaching!.actions).toEqual([{ index: 0, kind: 'copy', label: 'Copiar /compact' }]);
