@@ -25,6 +25,11 @@ function textOf(content: unknown): string {
 
 const isDate = (s: unknown) => typeof s === 'string' && Number.isFinite(Date.parse(s));
 
+/** Mismo id de sesión que la captura CDP (apps/desktop/src/cdp/capture.ts): una conversación, una sesión. */
+export function desktopSessionId(conversationUuid: string): string {
+  return `claude-desktop:${conversationUuid}`;
+}
+
 export interface StoreRecord {
   conversationUuid: string;
   product: string;
@@ -50,8 +55,8 @@ function base(rec: StoreRecord, over: Partial<Draft>): Draft {
     id: '',
     source: 'desktop',
     provider: 'anthropic',
-    client: 'claude-desktop',
-    sessionId: rec.conversationUuid,
+    client: 'claude-desktop-store',
+    sessionId: desktopSessionId(rec.conversationUuid),
     ts: new Date().toISOString(),
     model: '',
     tokens: { input: 0, output: 0, estimated: true },

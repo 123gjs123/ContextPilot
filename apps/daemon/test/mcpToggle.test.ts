@@ -93,6 +93,20 @@ describe('daemon: rutas /mcp y R11 desde el hook', () => {
     expect((await (await t.api('/mcp/disabled?sessionId=S1')).json()).servers).toEqual([]);
   });
 
+  it('usa la carpeta donde arrancó la sesión aunque el agente haga cd a una subcarpeta', async () => {
+    const t = await startTestDaemon();
+    daemons.push(t);
+    const root = tmp();
+    const sub = join(root, 'sub');
+    mkdirSync(sub);
+    t.d.pipeline.ingest([ev({ sessionId: 'S2', turn: 1 })]);
+    await t.api('/ingest/hooks/SessionStart', { method: 'POST', json: { session_id: 'S2', cwd: root } });
+    await t.api('/ingest/hooks/UserPromptSubmit', { method: 'POST', json: { session_id: 'S2', cwd: sub, prompt: 'x' } });
+    expect((await t.api('/mcp/disable', { method: 'POST', json: { sessionId: 'S2', servers: ['mcp__jira'] } })).status).toBe(200);
+    expect(existsSync(settingsLocalPath(root))).toBe(true);
+    expect(existsSync(settingsLocalPath(sub))).toBe(false);
+  });
+
   it('valida el cuerpo', async () => {
     const t = await startTestDaemon();
     daemons.push(t);

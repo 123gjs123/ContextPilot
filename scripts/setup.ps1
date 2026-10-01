@@ -81,7 +81,10 @@ if (-not ((Test-Path $settings) -and ((Get-Content $settings -Raw) -match 'statu
 # 6. MCP de Playwright
 if (Has 'claude') {
   Step 6 'MCP de Playwright (tareas de navegador en el chat)'
+  # En PowerShell 5.1, stderr redirigido con 'Stop' aborta el script: esta consulta corre con 'Continue'.
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   $pw = (claude mcp get playwright 2>&1 | Out-String)
+  $ErrorActionPreference = $prev
   if ($pw -match 'Scope:') { Ok 'Ya configurado' }
   elseif (Ask '¿Agrego el MCP de Playwright a tu Claude Code (scope usuario)?') {
     claude mcp add --scope user playwright -- npx @playwright/mcp@latest

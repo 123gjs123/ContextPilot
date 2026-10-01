@@ -217,7 +217,9 @@ export class ClaudeCodeParser {
     // replay lea primero los archivos de subagentes). El título sólo sale del hilo principal.
     const project = projectFromCwd(rec.cwd);
     if (project) this.project = project;
-    if (typeof rec.cwd === 'string' && rec.cwd) this.cwd = rec.cwd;
+    // Carpeta donde arrancó la sesión (la que Claude Code usa para .claude/settings.local.json),
+    // no la actual: el agente puede hacer `cd` a una subcarpeta.
+    if (!this.cwd && typeof rec.cwd === 'string' && rec.cwd) this.cwd = rec.cwd;
     if (!rec.isSidechain && !this.opts.sidechain) {
       if (rec.type === 'ai-title') {
         const title = cleanTitle(rec.aiTitle);

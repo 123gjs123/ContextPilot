@@ -7,7 +7,7 @@ import type { Pipeline } from '../../pipeline.js';
 import type { Storage } from '../../storage.js';
 import { decodeIdbValue } from './idbValue.js';
 import { readLog } from './ldbLog.js';
-import { isStoreRecord, STORE_FORMAT, turnsFromRecord, type StoreRecord } from './mapTurns.js';
+import { desktopSessionId, isStoreRecord, STORE_FORMAT, turnsFromRecord, type StoreRecord } from './mapTurns.js';
 
 // Adaptador Claude Desktop (CP-043, H-1): lee EN MODO SÓLO LECTURA la IndexedDB
 // `claude-conversation-store` del perfil de la app (docs/SPIKE-desktop-traffic.md).
@@ -184,12 +184,16 @@ export class DesktopStoreAdapter {
     const live: TurnEvent[] = [];
     const replay: TurnEvent[] = [];
     for (const rec of records) {
+      const session = this.o.pipeline.getSession(desktopSessionId(rec.conversationUuid));
+      // La captura CDP (si funciona) ya informa esta conversación: no se cuenta dos veces.
+      if (session?.client === 'claude-desktop') continue;
       const drafts = turnsFromRecord(rec).filter((d) => !this.o.storage.hasTurn(d.id));
       if (!drafts.length) continue;
-      let n = this.o.pipeline.getSession(rec.conversationUuid)?.turns ?? 0;
+      let n = session?.turns ?? 0;
       for (const d of drafts) {
         const e = { ...d, turn: ++n } as TurnEvent;
-        (this.first && Date.parse(e.ts) < cutoff ? replay : live).push(e);
+        // Turnos viejos no publican avisos, también los de una conversación retomada más tarde.
+        (Date.parse(e.ts) < cutoff ? replay : live).push(e);
       }
     }
     if (replay.length) this.o.pipeline.ingest(replay, { replay: true });

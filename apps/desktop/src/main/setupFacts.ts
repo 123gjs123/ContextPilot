@@ -55,7 +55,8 @@ export function loggedIn(bin: string | null, force = false): Promise<boolean | u
       clearTimeout(t);
       done(undefined);
     });
-    p.on('exit', () => {
+    // 'close' (no 'exit'): garantiza que stdout ya se leyó completo.
+    p.on('close', () => {
       clearTimeout(t);
       try {
         done(JSON.parse(out).loggedIn === true);

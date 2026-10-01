@@ -122,7 +122,7 @@ export class Daemon {
 
   /** R6/R11: carpeta de trabajo de la sesión (hooks de Claude Code o, si no, el transcript). Sólo memoria. */
   cwdFor(sessionId: string): string | undefined {
-    return this.cwdBySession.get(sessionId) ?? this.claude?.metaFor(sessionId)?.cwd;
+    return this.claude?.metaFor(sessionId)?.cwd ?? this.cwdBySession.get(sessionId);
   }
 
   /** R6/R11: desactiva o reactiva servidores MCP en el proyecto de la sesión y refresca su tarjeta. */
@@ -392,7 +392,8 @@ export class Daemon {
         else void this.claude.tailer.discover(resolve(path), false);
       }
     }
-    if (sid && typeof body?.cwd === 'string' && isAbsolute(body.cwd)) this.cwdBySession.set(sid, body.cwd);
+    // Primera carpeta vista = donde arrancó la sesión (los hooks informan la actual, que puede cambiar).
+    if (sid && typeof body?.cwd === 'string' && isAbsolute(body.cwd) && !this.cwdBySession.has(sid)) this.cwdBySession.set(sid, body.cwd);
     // R11: ¿el prompt pide algo de un MCP que desactivamos? El texto se usa acá y se descarta.
     if (name === 'UserPromptSubmit' && sid && typeof body?.prompt === 'string') {
       const needed = serversMentioned(body.prompt, this.mcpToggles.list(this.cwdFor(sid)));

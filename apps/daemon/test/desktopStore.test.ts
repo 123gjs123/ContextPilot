@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serialize } from 'node:v8';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decodeIdbValue } from '../src/adapters/desktop/idbValue.js';
 import { BLOCK, readLog } from '../src/adapters/desktop/ldbLog.js';
 import { turnsFromRecord } from '../src/adapters/desktop/mapTurns.js';
@@ -200,8 +200,8 @@ describe('mapeo a TurnEvent', () => {
     expect(t[0]).toMatchObject({
       id: 'cd:cse_demo:res-0',
       source: 'desktop',
-      client: 'claude-desktop',
-      sessionId: 'cse_demo',
+      client: 'claude-desktop-store',
+      sessionId: 'claude-desktop:cse_demo',
       model: 'claude-fable-5-1',
       tokens: { input: 5, output: 120, cacheRead: 2000, cacheWrite: 300, reasoning: 30, estimated: false },
       contextSize: 2 + 70 + 40_000 + 500,
@@ -267,23 +267,23 @@ describe('DesktopStoreAdapter (store sintético)', () => {
     const { t, a } = await daemonWith(s.root);
 
     a.tick();
-    const cw = t.d.pipeline.getSession('cse_demo')!;
+    const cw = t.d.pipeline.getSession('claude-desktop:cse_demo')!;
     expect(cw).toMatchObject({ source: 'desktop', turns: 1, model: 'claude-fable-5-1' });
-    expect(t.d.pipeline.getSession('chat-1')?.turns).toBe(2);
+    expect(t.d.pipeline.getSession('claude-desktop:chat-1')?.turns).toBe(2);
     expect(t.d.health.get('desktop')?.status).toBe('ok');
 
     // Misma data otra vez: sin duplicados.
     a.tick();
-    expect(t.d.pipeline.getSession('cse_demo')!.turns).toBe(1);
+    expect(t.d.pipeline.getSession('claude-desktop:cse_demo')!.turns).toBe(1);
 
     // El writer reescribe el tree con un turno más (blob nuevo + put en el log).
     writeFileSync(join(s.blob, '184'), idbBlob(coworkRecord(2)));
     s.put({ conversationUuid: 'cse_demo', product: 'cowork', messageCount: 9 });
     a.tick();
-    expect(t.d.pipeline.getSession('cse_demo')!.turns).toBe(2);
+    expect(t.d.pipeline.getSession('claude-desktop:cse_demo')!.turns).toBe(2);
 
     const views = (await (await t.api('/sessions?active=true')).json()) as { sessionId: string; source: string; client: string }[];
-    expect(views.find((v) => v.sessionId === 'cse_demo')).toMatchObject({ source: 'desktop', client: 'claude-desktop' });
+    expect(views.find((v) => v.sessionId === 'claude-desktop:cse_demo')).toMatchObject({ source: 'desktop', client: 'claude-desktop-store' });
   });
 
   it('un valor ajeno en la misma base de blobs no tapa las conversaciones', async () => {
@@ -293,7 +293,31 @@ describe('DesktopStoreAdapter (store sintético)', () => {
     writeFileSync(join(s.blob, '183'), idbBlob(coworkRecord(2)));
     const { t, a } = await daemonWith(s.root);
     a.tick();
-    expect(t.d.pipeline.getSession('cse_demo')?.turns).toBe(2);
+    expect(t.d.pipeline.getSession('claude-desktop:cse_demo')?.turns).toBe(2);
+  });
+
+  it('una conversación vista recién después del arranque: sus turnos viejos entran sin publicar avisos', async () => {
+    const s = fakeStore();
+    const { t, a } = await daemonWith(s.root);
+    a.tick();
+    const spy = vi.spyOn(t.d.pipeline, 'ingest');
+    // Aparece más tarde con turnos de hace 2 h (fuera de recentMs) y uno nuevo.
+    const old = coworkRecord(1) as any;
+    for (const e of old.tree.events) e.serverCreatedAt -= 2 * 3_600_000;
+    writeFileSync(join(s.blob, '190'), idbBlob(old));
+    s.put({ conversationUuid: 'cse_demo', product: 'cowork', messageCount: 3 });
+    a.tick();
+    expect(spy).toHaveBeenCalledWith(expect.any(Array), { replay: true });
+    expect(spy.mock.calls.some(([, o]) => !o)).toBe(false);
+  });
+
+  it('si la captura CDP ya informa la conversación, el store no la duplica', async () => {
+    const s = fakeStore();
+    writeFileSync(join(s.blob, '183'), idbBlob(coworkRecord(2)));
+    const { t, a } = await daemonWith(s.root);
+    t.d.pipeline.ingest([{ source: 'desktop', provider: 'anthropic', client: 'claude-desktop', sessionId: 'claude-desktop:cse_demo', turn: 1, model: 'claude', tokens: { input: 1, output: 1, estimated: true }, contextSize: 2, contextWindow: 200_000, idleSincePrevMs: 0, promptHash: '' }]);
+    a.tick();
+    expect(t.d.pipeline.getSession('claude-desktop:cse_demo')!.turns).toBe(1);
   });
 
   it('formato desconocido: health en error y sin cifras', async () => {
@@ -302,7 +326,7 @@ describe('DesktopStoreAdapter (store sintético)', () => {
     const { t, a } = await daemonWith(s.root);
     a.tick();
     expect(t.d.health.get('desktop')).toMatchObject({ status: 'error' });
-    expect(t.d.pipeline.getSession('cse_demo')).toBeUndefined();
+    expect(t.d.pipeline.getSession('claude-desktop:cse_demo')).toBeUndefined();
   });
 
   it('sin Claude Desktop instalado: no-data', async () => {

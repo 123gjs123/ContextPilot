@@ -123,9 +123,12 @@ export class ChatHost {
       const r = this.start(rt);
       if (!r.ok) return r;
     }
+    if (!this.write(rt, userLine(t))) {
+      this.stopProc(rt);
+      return { ok: false, message: 'El proceso de Claude no responde; volvé a enviar para reiniciarlo.' };
+    }
     addUserMessage(rt.state, t);
     rt.state.status = 'running';
-    rt.proc!.stdin!.write(`${userLine(t)}\n`);
     rt.rec.updatedAt = new Date().toISOString();
     this.save();
     this.push(rt, true);
@@ -135,7 +138,7 @@ export class ChatHost {
   interrupt(id: string): { ok: boolean; message: string } {
     const rt = this.chats.get(id);
     if (!rt?.proc) return { ok: false, message: 'No hay nada en curso' };
-    rt.proc.stdin!.write(`${interruptLine(`int-${++this.seq}`)}\n`);
+    if (!this.write(rt, interruptLine(`int-${++this.seq}`))) return { ok: false, message: 'El proceso ya terminó' };
     return { ok: true, message: 'Deteniendo…' };
   }
 
@@ -143,7 +146,7 @@ export class ChatHost {
     const rt = this.chats.get(id);
     const req = rt?.state.pending.find((p) => p.requestId === requestId);
     if (!rt?.proc || !req) return { ok: false, message: 'El pedido ya no está vigente' };
-    rt.proc.stdin!.write(`${permissionLine(requestId, allow, req.input)}\n`);
+    if (!this.write(rt, permissionLine(requestId, allow, req.input))) return { ok: false, message: 'El proceso ya terminó' };
     rt.state.pending = rt.state.pending.filter((p) => p.requestId !== requestId);
     this.push(rt, true);
     return { ok: true, message: allow ? `Permitido: ${req.toolName}` : `Denegado: ${req.toolName}` };
@@ -214,6 +217,8 @@ export class ChatHost {
     rt.buf = '';
     rt.stderr = '';
     rt.state.status = 'starting';
+    // Una escritura después de que el proceso terminó emite 'error' en stdin: no debe tirar la app.
+    proc.stdin!.on('error', () => {});
     proc.stdout!.setEncoding('utf8');
     proc.stdout!.on('data', (d: string) => this.onData(rt, d));
     proc.stderr!.setEncoding('utf8');
@@ -238,6 +243,18 @@ export class ChatHost {
       this.push(rt, true);
     });
     return { ok: true, message: 'Iniciado' };
+  }
+
+  /** Escribe una línea al CLI; false si el proceso ya no acepta entrada. */
+  private write(rt: Runtime, line: string): boolean {
+    const w = rt.proc?.stdin;
+    if (!w || w.destroyed || !w.writable) return false;
+    try {
+      w.write(`${line}\n`);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private onData(rt: Runtime, d: string): void {
