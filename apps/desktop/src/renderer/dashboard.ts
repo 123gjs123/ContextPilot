@@ -18,12 +18,13 @@ import { mergeTeam, parseTeamFile, TEAM_EXAMPLE, TEAM_EXPORTED, TEAM_NEVER, team
 import { timelineModel, timelineSvg } from '../shared/timeline.js';
 import type { AdapterHealth, AppSnapshot, SessionDetail, SessionView, Stats } from '../shared/types.js';
 import { clear, cp, h, toast } from './dom.js';
+import { renderChat, updateChatSnapshot } from './chat.js';
 import { renderLive, resetLive } from './live.js';
 
 // Dashboard (CP-050, CP-051, CP-055 UI, CP-056 UI, CP-057 UI, CP-059..CP-063). Sin framework:
 // render por pestaña. «En vivo» (default) se actualiza en el lugar con cada snapshot.
 
-type Tab = 'live' | 'sessions' | 'stats' | 'settings' | 'team';
+type Tab = 'live' | 'chat' | 'sessions' | 'stats' | 'settings' | 'team';
 
 const ui = {
   tab: 'live' as Tab,
@@ -617,6 +618,10 @@ function render(): void {
     return;
   }
   resetLive();
+  if (ui.tab === 'chat') {
+    void renderChat(root, ui.snapshot);
+    return;
+  }
   const scroll = root.scrollTop;
   clear(root);
   if (ui.tab === 'sessions') renderSessions(root);
@@ -641,6 +646,7 @@ async function init(): Promise<void> {
     ui.snapshot = s;
     renderConn();
     if (ui.tab === 'live') renderLive(main(), s);
+    if (ui.tab === 'chat') updateChatSnapshot(s);
     if (wasDown && s.connection === 'connected' && ui.tab === 'sessions') void loadSessions();
   });
   cp().onOpenSession((id) => {

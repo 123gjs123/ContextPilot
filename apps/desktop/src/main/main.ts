@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { NotificationFilter, notificationContent } from '../shared/notify.js';
 import { findSuggestion, initialState, markHandled, reduce, setConnection, type DesktopState } from '../shared/store.js';
 import type { AppSnapshot, Feedback, HandoffResponse, PlanUsageView, ServerMsg, Suggestion, TrayColor } from '../shared/types.js';
 import { accountRows, sessionRows, trayColor, trayMenuModel, trayTooltip } from '../shared/view.js';
+import { ChatHost } from './chatHost.js';
 import { DaemonClient } from './daemonClient.js';
 import { repoRootFrom, spawnDaemon } from './daemonSpawn.js';
 import { trayPng } from './icon.js';
@@ -35,6 +36,12 @@ let dashboard: BrowserWindow | undefined;
 let lastColor: TrayColor | undefined;
 let spawnedDaemon = false;
 const notifier = new NotificationFilter();
+/** Chat de ContextPilot: conversaciones manejadas por el `claude` CLI (pestaña «Chat»). */
+const chats = new ChatHost({
+  home,
+  onUpdate: (s) => dashboard && !dashboard.isDestroyed() && dashboard.webContents.send('cp:chat', s),
+  onList: (l) => dashboard && !dashboard.isDestroyed() && dashboard.webContents.send('cp:chatList', l),
+});
 let cdpAdapter: ClaudeDesktopAdapter | undefined;
 
 const client = new DaemonClient(home, port, {
@@ -173,6 +180,12 @@ function openDashboard(sessionId?: string): void {
       autoHideMenuBar: true,
       webPreferences: webPreferences(),
     });
+    // Links del chat (markdown): se abren en el navegador del sistema, nunca dentro de la app.
+    dashboard.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+      return { action: 'deny' };
+    });
+    dashboard.webContents.on('will-navigate', (e) => e.preventDefault());
     dashboard.loadFile(join(OUT_DIR, 'renderer', 'dashboard.html'), sessionId ? { hash: `session=${encodeURIComponent(sessionId)}` } : undefined);
   } else {
     if (sessionId) dashboard.webContents.send('cp:openSession', sessionId);
@@ -197,6 +210,14 @@ async function runAction(id: string, index: number): Promise<{ ok: boolean; mess
   const plan = planAction(s, index, source);
   switch (plan.kind) {
     case 'copy': {
+      // Sesión del chat de ContextPilot: los comandos (/compact, /clear, /model …) se ejecutan en ella.
+      const chat = chats.bySession(s.sessionId);
+      if (chat && plan.text.startsWith('/')) {
+        const r = chats.send(chat.id, plan.text);
+        if (r.ok) await sendFeedback(id, 'accepted');
+        openDashboard(s.sessionId);
+        return { ok: r.ok, message: r.ok ? `Ejecutado en el chat: ${plan.text.split(' ')[0]}` : r.message };
+      }
       clipboard.writeText(plan.text);
       const fb = await sendFeedback(id, plan.feedback);
       return { ok: true, message: fb.ok ? plan.message : `${plan.message} · ${fb.message}` };
@@ -284,6 +305,24 @@ function registerIpc(): void {
   ipcMain.handle('cp:openDashboard', (_e, sessionId?: string) => openDashboard(sessionId));
   ipcMain.handle('cp:hideOverlay', () => overlay?.hide());
   ipcMain.handle('cp:launchClaudeDesktop', () => startClaudeDesktop());
+  // ---- Chat ----
+  ipcMain.handle('cp:chat:list', () => chats.list());
+  ipcMain.handle('cp:chat:open', (_e, id: string) => chats.open(String(id)) ?? null);
+  ipcMain.handle('cp:chat:create', async (e, model?: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    const r = await dialog.showOpenDialog(win!, { title: 'Carpeta de trabajo del chat', properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const st = chats.create(r.filePaths[0], typeof model === 'string' && model ? model : undefined);
+    return { state: st, list: chats.list() };
+  });
+  ipcMain.handle('cp:chat:send', (_e, id: string, text: string) => chats.send(String(id), String(text)));
+  ipcMain.handle('cp:chat:interrupt', (_e, id: string) => chats.interrupt(String(id)));
+  ipcMain.handle('cp:chat:permission', (_e, id: string, req: string, allow: boolean) => chats.permission(String(id), String(req), !!allow));
+  ipcMain.handle('cp:chat:model', (_e, id: string, model: string) => chats.setModel(String(id), String(model ?? '')));
+  ipcMain.handle('cp:chat:remove', (_e, id: string) => {
+    chats.remove(String(id));
+    return chats.list();
+  });
 }
 
 function refreshPlanUsage(): void {
@@ -312,6 +351,7 @@ async function main(): Promise<void> {
   app.on('second-instance', (_e, argv) => (argv.includes('--dashboard') ? openDashboard() : showOverlay()));
   // App de bandeja: cerrar ventanas no termina el proceso.
   app.on('window-all-closed', () => {});
+  app.on('before-quit', () => chats.stopAll());
   await app.whenReady();
   registerIpc();
 

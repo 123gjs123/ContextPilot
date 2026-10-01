@@ -256,6 +256,15 @@ export function renderLive(root: HTMLElement, snap: AppSnapshot | undefined, now
   }
 }
 
+/** Tarjeta de una sesión suelta (la usa el chat, al costado de la conversación). */
+export function sessionCardElement(row: SnapshotSession, now = Date.now()): HTMLElement {
+  const el = h('article', { 'data-session': row.sessionId });
+  applyCard(el, liveCard(row, now));
+  return el;
+}
+
+type SnapshotSession = AppSnapshot['sessions'][number];
+
 /** Reinicia el estado del monitor (al salir de la pestaña). */
 export function resetLive(): void {
   cards.clear();
