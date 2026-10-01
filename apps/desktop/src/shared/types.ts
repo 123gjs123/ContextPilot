@@ -84,6 +84,8 @@ export interface RendererApi {
   hideOverlay(): Promise<void>;
   launchClaudeDesktop(): Promise<{ ok: boolean; message: string }>;
   chat: ChatApi;
+  setup(force?: boolean): Promise<import('./setup.js').SetupItem[]>;
+  copyText(text: string): Promise<{ ok: boolean; message: string }>;
 }
 
 /** Registro de un chat (sólo metadatos; el texto no se persiste). */

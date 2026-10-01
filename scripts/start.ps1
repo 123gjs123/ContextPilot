@@ -1,4 +1,4 @@
-# Levanta ContextPilot: daemon (127.0.0.1:47800) y monitor (tray + dashboard), cada uno en su ventana.
+﻿# Levanta ContextPilot: daemon (127.0.0.1:47800) y monitor (tray + dashboard), cada uno en su ventana.
 # Si ya hay un daemon o un monitor corriendo, los cierra antes (evita el choque de puerto 47800).
 # Uso: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1 [-NoMonitor]
 param([switch]$NoMonitor)

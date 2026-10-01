@@ -23,6 +23,8 @@ const api: RendererApi & { onOpenSession(cb: (id: string) => void): () => void }
   openDashboard: (sessionId) => ipcRenderer.invoke('cp:openDashboard', sessionId),
   hideOverlay: () => ipcRenderer.invoke('cp:hideOverlay'),
   launchClaudeDesktop: () => ipcRenderer.invoke('cp:launchClaudeDesktop'),
+  setup: (force) => ipcRenderer.invoke('cp:setup', force),
+  copyText: (text) => ipcRenderer.invoke('cp:copyText', text),
   chat: {
     list: () => ipcRenderer.invoke('cp:chat:list'),
     open: (id) => ipcRenderer.invoke('cp:chat:open', id),

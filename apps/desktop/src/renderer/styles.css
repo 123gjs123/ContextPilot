@@ -392,3 +392,23 @@ main:has(> .chat) { overflow: hidden; padding: 0; }
 .chat-skills ul { margin: 8px 0 0; padding-left: 16px; }
 @media (max-width: 1100px) { .chat { grid-template-columns: 200px minmax(0, 1fr); } .chat-side { display: none; } }
 @media (max-width: 700px) { .chat { grid-template-columns: 1fr; } .chat-list { display: none; } }
+
+/* ---------- Puesta en marcha ---------- */
+.setup { max-width: 860px; }
+.setup-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.setup-summary { font-weight: 600; }
+.setup-summary.bad { color: var(--bad); }
+.setup-summary.ok { color: var(--ok); }
+.setup-list { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 10px; }
+.setup-item { display: grid; grid-template-columns: 26px 1fr; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.setup-icon { font-weight: 700; text-align: center; }
+.st-ok .setup-icon { color: var(--ok); }
+.st-missing .setup-icon { color: var(--bad); }
+.st-missing { border-color: var(--bad); }
+.st-warn .setup-icon { color: var(--warn); }
+.st-optional .setup-icon { color: var(--text-muted); }
+.setup-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.setup-body p { margin: 4px 0; }
+.setup-cmd { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.setup-cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: 'Cascadia Code', Consolas, monospace; font-size: 12px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.setup-notice { border-color: var(--bad); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

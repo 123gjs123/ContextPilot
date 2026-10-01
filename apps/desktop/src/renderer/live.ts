@@ -16,6 +16,12 @@ const cards = new Map<string, CardEntry>();
 let order: string[] = [];
 let accountSig = '';
 let busy = false;
+/** Pasos obligatorios de puesta en marcha sin resolver (lo informa el dashboard). */
+let setupMissing = 0;
+
+export function setSetupNotice(n: number): void {
+  setupMissing = n;
+}
 /** Guías/detalles desplegados (clave del botón), para conservarlos entre redibujos. */
 const expanded = new Set<string>();
 
@@ -191,6 +197,15 @@ export function renderLive(root: HTMLElement, snap: AppSnapshot | undefined, now
       h('div', { class: 'live-head' }),
       h('div', { class: 'live-grid', role: 'list', 'aria-live': 'polite' }));
     root.append(wrap);
+  }
+  wrap.querySelector('.setup-notice')?.remove();
+  if (setupMissing) {
+    wrap.prepend(
+      h('div', { class: 'setup-notice card', role: 'alert' },
+        h('strong', {}, `Faltan ${setupMissing} paso${setupMissing > 1 ? 's' : ''} de puesta en marcha.`),
+        ' ',
+        h('button', { onclick: () => window.dispatchEvent(new CustomEvent('cp:go', { detail: 'setup' })) }, 'Ver qué falta')),
+    );
   }
   const acctSlot = wrap.querySelector<HTMLElement>('.acct-slot')!;
   const headEl = wrap.querySelector<HTMLElement>('.live-head')!;

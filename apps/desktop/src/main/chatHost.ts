@@ -176,6 +176,15 @@ export class ChatHost {
     return undefined;
   }
 
+  /** Estado de un servidor MCP según el último init de algún chat (p. ej. 'connected'). */
+  mcpStatus(name: string): string | undefined {
+    for (const rt of this.chats.values()) {
+      const m = rt.state.mcp.find((x) => x.name === name);
+      if (m) return m.status;
+    }
+    return undefined;
+  }
+
   stopAll(): void {
     for (const rt of this.chats.values()) this.stopProc(rt);
   }

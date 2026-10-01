@@ -10,6 +10,8 @@ import { findSuggestion, initialState, markHandled, reduce, setConnection, type 
 import type { AppSnapshot, Feedback, HandoffResponse, PlanUsageView, ServerMsg, Suggestion, TrayColor } from '../shared/types.js';
 import { accountRows, sessionRows, trayColor, trayMenuModel, trayTooltip } from '../shared/view.js';
 import { ChatHost } from './chatHost.js';
+import { findClaude, hooksInstalled, loggedIn, mcpConfigured } from './setupFacts.js';
+import { setupItems } from '../shared/setup.js';
 import { DaemonClient } from './daemonClient.js';
 import { repoRootFrom, spawnDaemon } from './daemonSpawn.js';
 import { trayPng } from './icon.js';
@@ -305,6 +307,26 @@ function registerIpc(): void {
   ipcMain.handle('cp:openDashboard', (_e, sessionId?: string) => openDashboard(sessionId));
   ipcMain.handle('cp:hideOverlay', () => overlay?.hide());
   ipcMain.handle('cp:launchClaudeDesktop', () => startClaudeDesktop());
+  // ---- Puesta en marcha ----
+  ipcMain.handle('cp:setup', async (_e, force?: boolean) => {
+    const bin = findClaude();
+    const health = (n: string) => state.health.find((x) => x.name === n);
+    return setupItems({
+      claudeBin: bin,
+      loggedIn: await loggedIn(bin, !!force),
+      daemonConnected: state.connection === 'connected',
+      hooksInstalled: hooksInstalled(),
+      playwrightConfigured: mcpConfigured('playwright'),
+      playwrightStatus: chats.mcpStatus('playwright'),
+      desktopHealth: health('desktop'),
+      webHealth: health('web'),
+      repoRoot: repoRootFrom(OUT_DIR),
+    });
+  });
+  ipcMain.handle('cp:copyText', (_e, text: string) => {
+    clipboard.writeText(String(text).slice(0, 2000));
+    return { ok: true, message: 'Copiado: pegalo en una terminal (PowerShell)' };
+  });
   // ---- Chat ----
   ipcMain.handle('cp:chat:list', () => chats.list());
   ipcMain.handle('cp:chat:open', (_e, id: string) => chats.open(String(id)) ?? null);

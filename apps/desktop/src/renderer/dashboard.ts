@@ -19,12 +19,13 @@ import { timelineModel, timelineSvg } from '../shared/timeline.js';
 import type { AdapterHealth, AppSnapshot, SessionDetail, SessionView, Stats } from '../shared/types.js';
 import { clear, cp, h, toast } from './dom.js';
 import { renderChat, updateChatSnapshot } from './chat.js';
-import { renderLive, resetLive } from './live.js';
+import { renderLive, resetLive, setSetupNotice } from './live.js';
+import { renderSetup, setupMissingCount } from './setup.js';
 
 // Dashboard (CP-050, CP-051, CP-055 UI, CP-056 UI, CP-057 UI, CP-059..CP-063). Sin framework:
 // render por pestaña. «En vivo» (default) se actualiza en el lugar con cada snapshot.
 
-type Tab = 'live' | 'chat' | 'sessions' | 'stats' | 'settings' | 'team';
+type Tab = 'live' | 'chat' | 'sessions' | 'stats' | 'settings' | 'team' | 'setup';
 
 const ui = {
   tab: 'live' as Tab,
@@ -622,6 +623,10 @@ function render(): void {
     void renderChat(root, ui.snapshot);
     return;
   }
+  if (ui.tab === 'setup') {
+    void renderSetup(root);
+    return;
+  }
   const scroll = root.scrollTop;
   clear(root);
   if (ui.tab === 'sessions') renderSessions(root);
@@ -653,6 +658,7 @@ async function init(): Promise<void> {
     ui.tab = 'sessions';
     void loadDetail(id);
   });
+  window.addEventListener('cp:go', (e) => go((e as CustomEvent<Tab>).detail));
   ui.snapshot = await cp().getSnapshot();
   const m = /session=([^&]+)/.exec(location.hash);
   if (m) ui.selected = decodeURIComponent(m[1]!);
@@ -660,6 +666,15 @@ async function init(): Promise<void> {
   render();
   document.body.dataset.ready = '1';
   void loadSessions();
+  // Puesta en marcha: si falta algo obligatorio, se abre esa pestaña al iniciar y «En vivo» lo avisa.
+  const refreshSetup = async (first: boolean) => {
+    const n = await setupMissingCount();
+    setSetupNotice(n);
+    if (first && n && !m) go('setup');
+    else if (ui.tab === 'live') renderLive(main(), ui.snapshot);
+  };
+  void refreshSetup(true);
+  window.setInterval(() => void refreshSetup(false), 60_000);
   // «hace N min», cuenta regresiva de la caché y rotación de consejos.
   window.setInterval(() => {
     if (ui.tab === 'live') renderLive(main(), ui.snapshot);
