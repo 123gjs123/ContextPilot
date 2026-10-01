@@ -13,9 +13,12 @@ Estado para retomar. Detalle en `docs/ACCEPTANCE.md` (ronda 2), `docs/BACKLOG.md
 
 ```powershell
 cd C:\Users\fosh\contextpilot
-node scripts/with-ca.mjs npm run start -w @contextpilot/daemon      # daemon en 127.0.0.1:47800
-npm run start -w @contextpilot/desktop -- --dashboard               # monitor (tray + dashboard)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1   # daemon + monitor, cada uno en su ventana
 ```
+
+`start.ps1` cierra antes un daemon o monitor previo (evita el choque del puerto 47800). A mano, por separado:
+`node scripts/with-ca.mjs npm run start -w @contextpilot/daemon` y `npm run start -w @contextpilot/desktop -- --dashboard`.
+Conviene lanzarlos desde una terminal propia: los procesos que el agente lanza en segundo plano se cortan a las 2 h.
 
 Sin daemon, hooks y statusline salen en silencio («ContextPilot: sin datos»).
 
