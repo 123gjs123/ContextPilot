@@ -57,7 +57,7 @@ async function scenario(name: string, withOldLine: boolean): Promise<{ afterStar
   const file = join(proj, `${sid}.jsonl`);
   // Evento de hace 20 min (dentro de recentMs = 30 min → se re-procesa en replay al arrancar).
   writeFileSync(file, withOldLine ? assistantLine(sid, 'msg_old', new Date(Date.now() - 20 * MIN).toISOString()) : '');
-  const env = { ...process.env, CONTEXTPILOT_PLAN_USAGE_FILE: planFile };
+  const env = { ...process.env, CONTEXTPILOT_PLAN_USAGE_FILE: planFile, CONTEXTPILOT_DESKTOP_IDB_DIR: join(root, 'no-desktop-idb') };
   delete env.NODE_EXTRA_CA_CERTS;
   const d = await startDaemon({ home, port: 0, quiet: true, env, claudeProjectsDir: projects, codexSessionsDir: join(root, 'codex'), claudeBin: () => null, rescanMs: 60_000, rootRetryMs: 200 });
   const base = `http://127.0.0.1:${d.port}`;

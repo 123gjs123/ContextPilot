@@ -137,6 +137,15 @@ const COPY: Record<string, RuleCopy> = {
     },
     cooldownWhy: 'La lista no cambia dentro de una sesión: a lo sumo una vez por día y sesión.',
   },
+  R11: {
+    name: 'MCP desactivado que hace falta',
+    detects:
+      'Un prompt de Claude Code menciona un servidor MCP que desactivaste desde ContextPilot en ese proyecto (por su nombre o palabras asociadas, como «Jira» para Atlassian). El texto del prompt no se guarda.',
+    why: 'Sin el servidor, el agente no puede usar esas herramientas y termina adivinando o pidiéndote datos a mano.',
+    suggests: 'Reactivar el servidor con un botón, desde la misma tarjeta.',
+    thresholds: {},
+    cooldownWhy: 'Corto: si seguís pidiendo cosas de ese servidor, vuelve a avisar, pero no en cada prompt.',
+  },
   R7: {
     name: 'Tarea simple en el modelo más caro',
     detects:

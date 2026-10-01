@@ -1,7 +1,8 @@
 import { clearCommand, compactCommand, isCli, modelCommand } from '../actions.js';
 import { isTopTier, smallerModelFor } from '../models.js';
+import { decodeServers, encodeServers, isMcpServerKey, mcpDisableGuide, prettyServerName } from '../mcp.js';
 import { promptTotal } from '../state.js';
-import type { Rule, Source } from '../types.js';
+import type { Rule, RuleResult, Source } from '../types.js';
 import { fmtPct, fmtTokens, prettyToolName } from '../util.js';
 
 const CLI: Source[] = ['claude-code', 'codex', 'gemini-cli'];
@@ -160,7 +161,7 @@ export const R6: Rule = {
   // y sesión (con 120 min el replay real dio hasta 15 disparos en una sesión).
   defaultCooldownMs: 24 * 60 * MIN,
   on: ['response'],
-  evaluate({ state, thresholds }) {
+  evaluate({ event, state, thresholds }) {
     if (state.turns < thresholds.idleTurns!) return null;
     const unused = state.toolsAvailable.filter((t) => {
       const last = lastUse(state.toolLastUsedTurn, t.name);
@@ -175,7 +176,57 @@ export const R6: Rule = {
       title: `${unused.length} herramientas/MCP sin uso cuestan ${est}${fmtTokens(cost)} tokens por turno`,
       detail: `Sin uso en ${thresholds.idleTurns} turnos. Candidatas a desactivar: ${names.map((t) => `${prettyToolName(t.name)} (${t.estimated ? '≈' : ''}${fmtTokens(t.definitionTokens)})`).join(', ')}.${est ? ' Costo estimado: la fuente no expone las definiciones completas.' : ''}`,
       estimatedSavingTokens: cost,
-      actions: [{ kind: 'show-detail', label: 'Ver lista' }],
+      actions: r6Actions(unused.map((t) => t.name), event.source),
+    };
+  },
+};
+
+/**
+ * R6: en Claude Code se puede desactivar desde la tarjeta (regla `permissions.deny` por servidor en el
+ * settings.local.json del proyecto, reversible). En el proxy sólo hay guía: no sabemos qué cliente es.
+ */
+/** Integración con el IDE (selección, diagnósticos): no se ofrece desactivarla aunque no se use. */
+const R6_KEEP = /^mcp__(claude-vscode|ide)$/i;
+
+export function r6Actions(names: string[], source: Source): RuleResult['actions'] {
+  const servers = names.filter((n) => isMcpServerKey(n) && !R6_KEEP.test(n));
+  const canToggle = source === 'claude-code' && servers.length > 0;
+  const guide = { kind: 'show-detail' as const, label: 'Guía paso a paso', payload: mcpDisableGuide(servers.length ? servers : names, canToggle) };
+  return canToggle ? [{ kind: 'mcp-disable', label: 'Desactivar en este proyecto', payload: encodeServers(servers) }, guide] : [guide];
+}
+
+/**
+ * R6 persistida antes de que existieran estas acciones (un único «Ver lista» sin payload): se
+ * reconstruyen desde los servidores que nombra el detalle. undefined si no aplica.
+ */
+export function upgradeLegacyR6(s: { ruleId: string; detail: string; actions: RuleResult['actions'] }, source: Source | undefined): RuleResult['actions'] | undefined {
+  if (s.ruleId !== 'R6' || !source) return undefined;
+  if (s.actions.length !== 1 || s.actions[0]!.kind !== 'show-detail' || s.actions[0]!.payload) return undefined;
+  const names = [...new Set(s.detail.match(/mcp__[A-Za-z0-9_-]+/g) ?? [])].filter(isMcpServerKey);
+  return names.length ? r6Actions(names, source) : undefined;
+}
+
+/**
+ * R11: el prompt menciona un servidor MCP que ContextPilot desactivó en este proyecto (p. ej. «el
+ * ticket de Jira» con Atlassian desactivado). Recomienda reactivarlo desde la tarjeta.
+ */
+export const R11: Rule = {
+  id: 'R11',
+  phase: 1,
+  sources: ['claude-code'],
+  requiresExact: false,
+  defaults: {},
+  defaultCooldownMs: 10 * MIN,
+  on: ['prompt'],
+  evaluate({ event }) {
+    const servers = decodeServers(encodeServers(event.mcpNeeded ?? []));
+    if (!servers.length) return null;
+    const names = servers.map(prettyServerName).join(', ');
+    return {
+      severity: 'warn',
+      title: `Tu pedido parece necesitar ${names}, que está desactivado`,
+      detail: `Desactivaste ${names} en este proyecto para ahorrar contexto. Sin reactivarlo, el agente no puede usar sus herramientas para este pedido.`,
+      actions: [{ kind: 'mcp-enable', label: `Reactivar ${names}`, payload: encodeServers(servers) }],
     };
   },
 };

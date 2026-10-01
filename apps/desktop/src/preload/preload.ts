@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ChatState } from '../shared/chat.js';
 import type { AppSnapshot, RendererApi } from '../shared/types.js';
 
 // Puente mínimo renderer ↔ main. El renderer nunca ve el token ni tiene Node.
@@ -22,6 +23,20 @@ const api: RendererApi & { onOpenSession(cb: (id: string) => void): () => void }
   openDashboard: (sessionId) => ipcRenderer.invoke('cp:openDashboard', sessionId),
   hideOverlay: () => ipcRenderer.invoke('cp:hideOverlay'),
   launchClaudeDesktop: () => ipcRenderer.invoke('cp:launchClaudeDesktop'),
+  setup: (force) => ipcRenderer.invoke('cp:setup', force),
+  copyText: (text) => ipcRenderer.invoke('cp:copyText', text),
+  chat: {
+    list: () => ipcRenderer.invoke('cp:chat:list'),
+    open: (id) => ipcRenderer.invoke('cp:chat:open', id),
+    create: (model) => ipcRenderer.invoke('cp:chat:create', model),
+    send: (id, text) => ipcRenderer.invoke('cp:chat:send', id, text),
+    interrupt: (id) => ipcRenderer.invoke('cp:chat:interrupt', id),
+    permission: (id, req, allow) => ipcRenderer.invoke('cp:chat:permission', id, req, allow),
+    setModel: (id, model) => ipcRenderer.invoke('cp:chat:model', id, model),
+    remove: (id) => ipcRenderer.invoke('cp:chat:remove', id),
+    onUpdate: (cb) => subscribe<ChatState>('cp:chat', cb),
+    onList: (cb) => subscribe('cp:chatList', cb),
+  },
 };
 
 contextBridge.exposeInMainWorld('cp', api);

@@ -52,10 +52,10 @@ const ctxEv = (contextSize: number, over: Partial<TurnEvent> = {}) =>
   ev({ contextSize, tokens: { input: 10, output: 100, cacheRead: contextSize - 110, cacheWrite: 0, estimated: false }, ...over });
 
 describe('catálogo', () => {
-  it('las 16 reglas del SPEC §5: ids únicos y sources declaradas', () => {
+  it('las 16 reglas del SPEC §5 + R11: ids únicos y sources declaradas', () => {
     const ids = ALL_RULES.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.sort()).toEqual(['G1', 'G2', 'R1', 'R10', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'W1', 'W2', 'W3', 'W4'].sort());
+    expect(ids.sort()).toEqual(['G1', 'G2', 'R1', 'R10', 'R11', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'W1', 'W2', 'W3', 'W4'].sort());
     for (const r of ALL_RULES) expect(r.sources.length).toBeGreaterThan(0);
   });
 });

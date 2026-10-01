@@ -183,7 +183,7 @@ describe('RuleEngine: sidechain y ahorro', () => {
     expect(s.estimatedSavingTokens).toBe(Math.round(20_000 * 0.8 * 10));
   });
 
-  it('rendimiento: 16 reglas sobre 1000 eventos, p99 < 20 ms', () => {
+  it('rendimiento: 17 reglas sobre 1000 eventos, p99 < 20 ms', () => {
     const eng = new RuleEngine();
     let st: SessionState | undefined;
     const times: number[] = [];
@@ -197,6 +197,6 @@ describe('RuleEngine: sidechain y ahorro', () => {
     }
     times.sort((a, b) => a - b);
     expect(times[989]!).toBeLessThan(20);
-    expect(ALL_RULES).toHaveLength(16);
+    expect(ALL_RULES).toHaveLength(17);
   });
 });

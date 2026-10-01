@@ -83,6 +83,34 @@ export interface RendererApi {
   openDashboard(sessionId?: string): Promise<void>;
   hideOverlay(): Promise<void>;
   launchClaudeDesktop(): Promise<{ ok: boolean; message: string }>;
+  chat: ChatApi;
+  setup(force?: boolean): Promise<import('./setup.js').SetupItem[]>;
+  copyText(text: string): Promise<{ ok: boolean; message: string }>;
+}
+
+/** Registro de un chat (sólo metadatos; el texto no se persiste). */
+export interface ChatRecordView {
+  id: string;
+  cwd: string;
+  model?: string;
+  sessionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type ChatResult = Promise<{ ok: boolean; message: string }>;
+
+export interface ChatApi {
+  list(): Promise<ChatRecordView[]>;
+  open(id: string): Promise<import('./chat.js').ChatState | null>;
+  create(model?: string): Promise<{ state: import('./chat.js').ChatState; list: ChatRecordView[] } | null>;
+  send(id: string, text: string): ChatResult;
+  interrupt(id: string): ChatResult;
+  permission(id: string, requestId: string, allow: boolean): ChatResult;
+  setModel(id: string, model: string): ChatResult;
+  remove(id: string): Promise<ChatRecordView[]>;
+  onUpdate(cb: (s: import('./chat.js').ChatState) => void): () => void;
+  onList(cb: (l: ChatRecordView[]) => void): () => void;
 }
 
 /** D-1: aviso de cuenta por proveedor (R10), fuera de las sesiones. */
@@ -132,7 +160,8 @@ export interface SuggestionRow {
   detail: string;
   savingText?: string;
   estimatedSavingTokens?: number;
-  actions: { index: number; kind: string; label: string }[];
+  /** `detail`: texto de las acciones `show-detail` (guía, ejemplo) para mostrarlo desplegado. */
+  actions: { index: number; kind: string; label: string; detail?: string }[];
 }
 
 export interface PlanUsageView {

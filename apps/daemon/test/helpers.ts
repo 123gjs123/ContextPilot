@@ -52,17 +52,20 @@ export async function startTestDaemon(over: Partial<DaemonOptions> & { home?: st
   delete env.NODE_EXTRA_CA_CERTS;
   // Nunca leer el plan-usage real de Claude Desktop en tests (cambiaría R10).
   env.CONTEXTPILOT_PLAN_USAGE_FILE ??= join(scratch, 'plan-usage-history.json');
+  // Nunca leer el store real de Claude Desktop en tests.
+  env.CONTEXTPILOT_DESKTOP_IDB_DIR ??= join(scratch, 'desktop-idb');
   const d = await startDaemon({
     home,
     port: 0,
     quiet: true,
-    env,
     claudeProjectsDir: dirs.claude,
     codexSessionsDir: dirs.codex,
     claudeBin: () => null,
     rescanMs: 60_000,
     rootRetryMs: 200,
     ...over,
+    // Aunque el test pase su propio env: el store real de Claude Desktop nunca se lee en tests.
+    env: { ...(over.env ?? env), CONTEXTPILOT_DESKTOP_IDB_DIR: over.env?.CONTEXTPILOT_DESKTOP_IDB_DIR ?? join(scratch, 'desktop-idb') },
   });
   const base = `http://127.0.0.1:${d.port}`;
   const api = (path: string, init: RequestInit & { json?: unknown } = {}) => {
@@ -189,6 +192,7 @@ export async function spawnDaemon(env: Record<string, string>): Promise<{ base: 
       CONTEXTPILOT_CLAUDE_PROJECTS: join(home, 'no-projects'),
       CONTEXTPILOT_CODEX_SESSIONS: join(home, 'no-codex'),
       CONTEXTPILOT_PLAN_USAGE_FILE: join(home, 'no-plan.json'),
+      CONTEXTPILOT_DESKTOP_IDB_DIR: join(home, 'no-desktop-idb'),
       ...env,
     },
     stdio: 'ignore',

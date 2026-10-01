@@ -1,4 +1,4 @@
-import { coachingFor, fmtPct, fmtTokens, ruleName, tipFor, type Coaching } from '@contextpilot/core';
+import { coachingFor, fmtPct, fmtTokens, prettyServerName, ruleName, tipFor, type Coaching } from '@contextpilot/core';
 import type { AccountRow, AppSnapshot, SessionRow, SuggestionRow } from './types.js';
 import { meterLevel } from './view.js';
 
@@ -23,13 +23,14 @@ export const CARD_STATE_COLOR: Record<CardState, 'green' | 'amber' | 'red' | 'gr
 };
 
 const RANK: Record<CardState, number> = { nodata: 0, ok: 1, warn: 2, critical: 3 };
-const SEVERITY_STATE: Record<SuggestionRow['severity'], CardState> = { info: 'ok', warn: 'warn', critical: 'critical' };
+// Toda buena práctica recomendada vigente pone la tarjeta en rojo, sea cual sea su severidad.
+const SEVERITY_STATE: Record<SuggestionRow['severity'], CardState> = { info: 'critical', warn: 'critical', critical: 'critical' };
 const METER_STATE = { green: 'ok', yellow: 'warn', red: 'critical' } as const;
 
 /**
  * Estado de la tarjeta = el peor entre el medidor de contexto (SPEC §9: < 50 % verde, 50–75 %
- * ámbar, > 75 % rojo) y la severidad de la sugerencia vigente (info no alarma). Mismo criterio que
- * el color del tray. Sin datos (adaptador roto o sin ventana y sin sugerencia) → gris.
+ * ámbar, > 75 % rojo) y la sugerencia vigente. Mismo criterio que
+ * el color del tray. Cualquier sugerencia vigente → rojo. Sin datos (adaptador roto o sin ventana y sin sugerencia) → gris.
  */
 export function cardState(r: Pick<SessionRow, 'noData' | 'contextPct'> & { suggestion?: Pick<SuggestionRow, 'severity'> }, contextWindow: number): CardState {
   if (r.noData) return 'nodata';
@@ -103,6 +104,8 @@ export interface LiveCard {
   lastText: string;
   coaching?: CardCoaching;
   tip: string | null;
+  /** R6/R11: servidores MCP desactivados por ContextPilot en el proyecto (con botón «Reactivar»). */
+  mcpDisabled: { key: string; name: string }[];
 }
 
 /** Adaptador sin datos: no se muestran cifras ni consejos inventados. */
@@ -135,7 +138,7 @@ export function liveCard(r: SessionRow, now: number): LiveCard {
     badge: SOURCE_BADGE[r.source] ?? { short: r.source.slice(0, 3).toUpperCase(), label: r.source },
     model: r.model || '—',
     state,
-    stateLabel: CARD_STATE_LABEL[state],
+    stateLabel: coaching && state === 'critical' ? 'Buena práctica recomendada' : CARD_STATE_LABEL[state],
     color: CARD_STATE_COLOR[state],
     ctxPct: r.contextPct,
     ctxText: r.meterText,
@@ -146,6 +149,7 @@ export function liveCard(r: SessionRow, now: number): LiveCard {
     burnText: v.burn && v.burn.tokensPerMin > 0 ? `${v.burn.estimated ? '≈' : ''}${fmtTokens(v.burn.tokensPerMin)}/min` : '—',
     lastText: relTime(v.lastTurnAt, now),
     coaching,
+    mcpDisabled: (v.mcpDisabled ?? []).map((key) => ({ key, name: prettyServerName(key) })),
     // Sin sugerencia vigente: consejo contextual (rota; lo urgente gana).
     tip: coaching ? null : r.noData ? NO_DATA_TIP : tipFor(v, now),
   };

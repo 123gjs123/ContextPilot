@@ -32,7 +32,8 @@ export function meterText(s: SessionView, noData: boolean): string {
   return `${s.estimated ? '≈' : ''}${fmtPct(s.contextPct)}`;
 }
 
-const SEVERITY_TO_COLOR: Record<Suggestion['severity'], TrayColor> = { info: 'green', warn: 'yellow', critical: 'red' };
+// Toda buena práctica recomendada vigente pone el tray en rojo, sea cual sea su severidad.
+const SEVERITY_TO_COLOR: Record<Suggestion['severity'], TrayColor> = { info: 'red', warn: 'red', critical: 'red' };
 const COLOR_RANK: Record<TrayColor, number> = { gray: 0, green: 1, yellow: 2, red: 3 };
 
 function worst(a: TrayColor, b: TrayColor): TrayColor {
@@ -72,7 +73,7 @@ export function suggestionRow(s: Suggestion): SuggestionRow {
     detail: s.detail,
     savingText: s.estimatedSavingTokens ? `ahorro ≈${fmtTokens(s.estimatedSavingTokens)} tokens` : undefined,
     estimatedSavingTokens: s.estimatedSavingTokens,
-    actions: s.actions.map((a, index) => ({ index, kind: a.kind, label: a.label })),
+    actions: s.actions.map((a, index) => ({ index, kind: a.kind, label: a.label, ...(a.kind === 'show-detail' ? { detail: a.payload ?? s.detail } : {}) })),
   };
 }
 

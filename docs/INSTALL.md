@@ -2,6 +2,42 @@
 
 Windows 11, Node 24. Todo corre local en `127.0.0.1`; no hay servicios externos.
 
+## Primer arranque (desde cero)
+
+Requisitos: **Node 24+** y una cuenta de Claude (el chat usa tu suscripción con el login de Claude Code).
+
+```powershell
+cd C:\ruta\a\contextpilot
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1
+```
+
+El instalador revisa y hace, en orden (lo ya hecho se saltea):
+
+| Paso | Qué hace | ¿Pregunta? |
+|---|---|---|
+| Node y npm | Verifica la versión | — |
+| Dependencias | `npm install` + `npm run build` | — |
+| Claude Code | Si falta `claude`, ofrece `npm install -g @anthropic-ai/claude-code` | Sí |
+| Login | Si no hay sesión, ofrece `claude auth login` (abre el navegador) | Sí |
+| Hooks y statusline | `node scripts/install-hooks.mjs [--statusline]` (§4, §5; guarda backup) | Sí |
+| MCP de Playwright | `claude mcp add --scope user playwright -- npx @playwright/mcp@latest`: navegador para el chat | Sí |
+| Arrancar | `scripts/start.ps1`: daemon y monitor, cada uno en su ventana | Sí |
+
+`-Yes` responde «sí» a todo. Opcionales, sin pasos extra: **Claude Desktop** (si está instalado, el daemon lee sus
+conversaciones en modo sólo lectura) y la **extensión del navegador** (§3).
+
+**Arrancar en el día a día:** `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1` (cierra antes
+un daemon o monitor previo; lanzalo desde tu propia terminal).
+
+**¿Falta algo?** El dashboard tiene la pestaña **«Puesta en marcha»**: muestra qué está listo, qué falta y el comando
+para resolverlo (se copia con un clic). Si falta algo obligatorio se abre sola al iniciar y «En vivo» lo avisa.
+
+**Chat:** la pestaña «Chat» conversa con Claude desde ContextPilot usando el `claude` CLI con tu login, en la carpeta
+que elijas (tus skills, MCP y `CLAUDE.md`). Los permisos de herramientas se piden en pantalla. ContextPilot guarda
+sólo id, carpeta y modelo de cada chat; el historial se relee del transcript de Claude Code.
+
+Las secciones siguientes detallan cada pieza por separado.
+
 ## 1. Instalar
 
 ```powershell

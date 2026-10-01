@@ -1,4 +1,4 @@
-import { R1, R2, R3, R5, R6, R7, R8, R9 } from './rules/cli.js';
+import { R1, R2, R3, R5, R6, R7, R8, R9, R11 } from './rules/cli.js';
 import { G1, G2, R10, R4, W1, W2, W3, W4 } from './rules/other.js';
 import { accountSessionId } from './actions.js';
 import type {
@@ -19,7 +19,7 @@ import { estimateSaving } from './savings.js';
 import { newSession } from './state.js';
 import { ulid } from './util.js';
 
-export const ALL_RULES: Rule[] = [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, W1, W2, W3, W4, G1, G2];
+export const ALL_RULES: Rule[] = [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, W1, W2, W3, W4, G1, G2];
 
 const SEVERITY_RANK: Record<Severity, number> = { info: 1, warn: 2, critical: 3 };
 const SUGGESTION_TTL_MS = 10 * 60_000;

@@ -92,8 +92,14 @@ const COPY: Record<string, Copy> = {
   R6: {
     what: ({ suggestion }) => (suggestion ? `${suggestion.title}.` : undefined),
     why: 'Las definiciones de herramientas viajan en cada pedido aunque no las uses.',
-    action: 'Mirá la lista y desactivá los servidores MCP que no necesitás para este trabajo.',
+    action: 'Tocá «Desactivar en este proyecto» (se revierte desde esta misma tarjeta) o abrí la guía paso a paso.',
     habit: 'Activá los MCP por tipo de tarea, no todos siempre.',
+  },
+  R11: {
+    what: ({ suggestion }) => (suggestion ? `${suggestion.title}.` : undefined),
+    why: 'Sin ese servidor, el agente no puede usar sus herramientas para lo que le pediste.',
+    action: 'Tocá «Reactivar»: Claude Code recarga la configuración y el servidor vuelve desde el próximo turno.',
+    habit: 'Desactivá los MCP por tarea y reactivalos cuando la tarea cambia.',
   },
   R7: {
     what: ({ view }) => (view ? `Pedido corto con respuesta corta en ${view.model}, el modelo más caro.` : undefined),

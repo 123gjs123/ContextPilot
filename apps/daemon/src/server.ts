@@ -271,6 +271,21 @@ export function createApp(d: Daemon): { server: Server; wss: WebSocketServer; br
       }
     }
 
+    // R6/R11: desactivar / reactivar servidores MCP en el proyecto de una sesión de Claude Code.
+    m = /^\/mcp\/(disable|enable)$/.exec(path);
+    if (method === 'POST' && m) {
+      const body = (await readJson(req)) ?? {};
+      if (typeof body.sessionId !== 'string' || !body.sessionId) return send(res, 400, { error: 'sessionId requerido' });
+      if (!Array.isArray(body.servers) || !body.servers.every((s: unknown) => typeof s === 'string')) return send(res, 400, { error: 'servers: lista de textos' });
+      const r = d.toggleMcp(body.sessionId, body.servers, m[1] as 'disable' | 'enable');
+      return r.ok ? send(res, 200, r) : send(res, 409, { error: r.error });
+    }
+    if (method === 'GET' && path === '/mcp/disabled') {
+      const sid = url.searchParams.get('sessionId');
+      if (!sid) return send(res, 400, { error: 'sessionId requerido' });
+      return send(res, 200, { servers: d.mcpDisabled(sid) });
+    }
+
     if (path === '/config' && method === 'GET') return send(res, 200, d.config);
     if (path === '/config' && method === 'PUT') {
       const body = await readJson(req);

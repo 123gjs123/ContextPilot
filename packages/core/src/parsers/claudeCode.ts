@@ -98,6 +98,8 @@ export class ClaudeCodeParser {
   private activity: TurnActivity[] = [];
   /** CP-061: carpeta de trabajo (nombre base del `cwd` de los registros) y último `ai-title`. */
   project?: string;
+  /** R6/R11: ruta completa del `cwd` (para desactivar MCP por proyecto). Sólo memoria. */
+  cwd?: string;
   /** CP-061: título de la conversación (registro `ai-title`). Contenido del usuario: sólo memoria. */
   title?: string;
 
@@ -117,8 +119,8 @@ export class ClaudeCodeParser {
   }
 
   /** CP-061: metadatos legibles de la sesión (en memoria). */
-  meta(): { project?: string; title?: string } {
-    return { project: this.project, title: this.title };
+  meta(): { project?: string; title?: string; cwd?: string } {
+    return { project: this.project, title: this.title, cwd: this.cwd };
   }
 
   /**
@@ -215,6 +217,9 @@ export class ClaudeCodeParser {
     // replay lea primero los archivos de subagentes). El título sólo sale del hilo principal.
     const project = projectFromCwd(rec.cwd);
     if (project) this.project = project;
+    // Carpeta donde arrancó la sesión (la que Claude Code usa para .claude/settings.local.json),
+    // no la actual: el agente puede hacer `cd` a una subcarpeta.
+    if (!this.cwd && typeof rec.cwd === 'string' && rec.cwd) this.cwd = rec.cwd;
     if (!rec.isSidechain && !this.opts.sidechain) {
       if (rec.type === 'ai-title') {
         const title = cleanTitle(rec.aiTitle);
