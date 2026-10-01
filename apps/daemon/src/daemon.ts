@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { aggregateTeam, projectPlan, R10, serversMentioned, RuleEngine, type AdapterHealth, type Projection, type Provider } from '@contextpilot/core';
 import { createClaudeCodeAdapter, createCodexAdapter, defaultClaudeProjectsDir, defaultCodexSessionsDir } from './adapters/cli.js';
+import { DesktopStoreAdapter } from './adapters/desktop/store.js';
 import { GeminiAdapter } from './adapters/gemini.js';
 import { configuredMcpServers } from './adapters/mcpConfig.js';
 import { PERCENT_PLAN, PlanUsageAdapter } from './adapters/planUsage.js';
@@ -92,6 +93,7 @@ export class Daemon {
   private codex: JsonlAdapter | null = null;
   private gemini: GeminiAdapter | null = null;
   planUsage: PlanUsageAdapter | null = null;
+  desktopStore: DesktopStoreAdapter | null = null;
   private geminiPath = '';
   private retentionTimer: NodeJS.Timeout | null = null;
   private accountTimer: NodeJS.Timeout | null = null;
@@ -337,6 +339,14 @@ export class Daemon {
       this.planUsage = null;
       this.pipeline.engine.setConfig(this.effectiveConfig());
     }
+    // H-1: turnos de Claude Desktop desde su store local (sólo lectura).
+    if (on('desktop') && !this.desktopStore) {
+      this.desktopStore = new DesktopStoreAdapter({ pipeline: this.pipeline, storage: this.storage, health: this.health, log: this.log, env: this.env, recentMs: this.config.daemon.recentMs });
+      this.desktopStore.start();
+    } else if (!on('desktop') && this.desktopStore) {
+      this.desktopStore.stop();
+      this.desktopStore = null;
+    }
     for (const n of ['claude-code', 'codex', 'gemini-cli', 'hooks', 'proxy', 'web', 'desktop', 'claude-plan-usage']) {
       if (!on(n)) this.health.set(n, { status: 'disabled', detail: 'deshabilitado en config' });
       else if (this.health.get(n)?.status === 'disabled') this.health.set(n, { status: 'no-data', detail: 'habilitado' });
@@ -457,6 +467,7 @@ export class Daemon {
     this.codex?.stop();
     this.gemini?.stop();
     this.planUsage?.stop();
+    this.desktopStore?.stop();
     this.claude = this.codex = null;
     this.gemini = null;
     if (this.retentionTimer) clearInterval(this.retentionTimer);

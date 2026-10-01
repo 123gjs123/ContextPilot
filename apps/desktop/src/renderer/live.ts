@@ -250,7 +250,7 @@ export function renderLive(root: HTMLElement, snap: AppSnapshot | undefined, now
       h('div', { class: 'live-empty card' },
         h('strong', {}, connected ? 'Sin sesiones activas' : 'Sin conexión con el daemon'),
         h('p', { class: 'muted' }, connected
-          ? 'Cuando trabajes con Claude Code, Codex, Gemini CLI o la web, cada sesión aparece acá como una tarjeta con su contexto, caché y consejos.'
+          ? 'Cuando trabajes con Claude Code, Claude Desktop, Codex, Gemini CLI o la web, cada sesión aparece acá como una tarjeta con su contexto, caché y consejos.'
           : 'El monitor se completa solo cuando el daemon responde.')),
     );
   }

@@ -23,7 +23,7 @@ Sin daemon, hooks y statusline salen en silencio («ContextPilot: sin datos»).
 
 1. Login en `codex` y `gemini`; luego `node scripts/install-gemini-telemetry.mjs` y una sesión corta en cada uno (cierra «3 CLIs» de fase 0).
 2. Cargar la extensión: `apps/extension/dist` como descomprimida en Chrome/Edge; pegar el token de `%LOCALAPPDATA%\ContextPilot\token`; checklist en `docs/ACCEPTANCE.md` §6.
-3. H-1 Claude Desktop: autorizar el adaptador que lee su IndexedDB local (`docs/SPIKE-desktop-traffic.md`) — fue bloqueado por el clasificador de permisos — o cerrar CP-043 como won't.
+3. H-1 Claude Desktop: **implementado** (`apps/daemon/src/adapters/desktop/`, sólo lectura, adaptador `desktop` de la config). Probado sólo con datos sintéticos: el clasificador de permisos bloqueó correrlo contra el store real desde el agente. Validarlo en vivo levantando el daemon a mano y revisando «Salud de adaptadores» → `desktop`.
 4. H-3 aprobación de seguridad del modo equipo; H-5 exigir id de extensión; H-8 diferir `transformers.js` (recomendado).
 5. Decidir si daemon y monitor arrancan con Windows (hoy se levantan a mano).
 
